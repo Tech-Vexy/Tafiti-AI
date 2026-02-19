@@ -1,0 +1,38 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic[email]
+pydantic-settings
+sqlalchemy
+alembic
+asyncpg
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# LLM & Agent Framework
+langchain
+langchain-core
+langchain-openai
+langchain-community
+openai
+
+# Vector Database
+qdrant-client
+sentence-transformers
+
+# API & Search
+httpx
+requests
+
+# Utilities
+python-dotenv
+redis
+celery
+
+# Development
+pytest
+pytest-asyncio
+black
+ruff
+
