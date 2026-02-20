@@ -30,22 +30,21 @@ export default defineConfig({
                  */
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
-                        if (id.includes('react-dom') || id.includes('react/'))    return 'vendor-react';
-                        if (id.includes('@clerk'))                                  return 'vendor-clerk';
-                        if (id.includes('lucide-react'))                           return 'vendor-ui';
-                        if (id.includes('axios'))                                  return 'vendor-misc';
+                        if (id.includes('react') || id.includes('scheduler')) return 'vendor-core';
+                        if (id.includes('@clerk')) return 'vendor-clerk';
+                        if (id.includes('lucide-react')) return 'vendor-ui';
                         // Everything else into a generic vendor chunk
                         return 'vendor-misc';
                     }
                     // Group heavy view components into their own chunk
                     if (
-                        id.includes('GapAnalysisView')   ||
+                        id.includes('GapAnalysisView') ||
                         id.includes('CollaborationView') ||
-                        id.includes('BillingView')       ||
+                        id.includes('BillingView') ||
                         id.includes('CitationGraphView') ||
-                        id.includes('SynthesisView')     ||
-                        id.includes('ResearchChatView')  ||
-                        id.includes('DiscoverView')      ||
+                        id.includes('SynthesisView') ||
+                        id.includes('ResearchChatView') ||
+                        id.includes('DiscoverView') ||
                         id.includes('ProfileView')
                     ) {
                         return 'views';
