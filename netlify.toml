@@ -1,3 +1,3 @@
 [build]
-  command = "cd apps/frontend && npm install @rollup/rollup-linux-x64-gnu --no-save && chmod +x node_modules/.bin/* && npm run build"
+  command = "npm run build --workspace=@tafiti/frontend"
   publish = "apps/frontend/dist"
