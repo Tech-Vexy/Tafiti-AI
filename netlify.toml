@@ -1,4 +1,4 @@
 [build]
   base = "apps/frontend"
-  command = "npx --yes vite build"
+  command = "chmod -R +x ../../node_modules/.bin node_modules/.bin 2>/dev/null; vite build"
   publish = "dist"
