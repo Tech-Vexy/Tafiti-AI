@@ -45,6 +45,18 @@ class FeedbackCreate(BaseModel):
     improvement_text: Optional[str] = None
     would_recommend: Optional[str] = None
 
+
+class FeedbackPublicResponse(BaseModel):
+    id: str
+    rating: int
+    quote: Optional[str] = None  # Maps to improvement_text or favorite_feature
+    author: str  # Maps to username or "Anonymous"
+    role: Optional[str] = None  # Maps to career_field
+    avatar: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 # ... (other code between line 40 and 180)
 
 class ConnectionResponse(BaseModel):

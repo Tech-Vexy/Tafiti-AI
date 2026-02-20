@@ -22,18 +22,26 @@ logger = get_logger("main")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing application services...")
-    await init_db()
-    await cache.connect()
-    
+
+    try:
+        await init_db()
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+
+    try:
+        await cache.connect()
+    except Exception as e:
+        logger.error(f"Redis cache connection failed: {e}")
+
     # Initialize shared httpx client
     app.state.http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(15.0),
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
     )
     logger.info("Shared HTTP client initialized.")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down application services...")
     await app.state.http_client.aclose()
