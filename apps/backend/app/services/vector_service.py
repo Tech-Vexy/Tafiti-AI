@@ -13,33 +13,50 @@ logger = get_logger("vector_store")
 
 class VectorStore:
     def __init__(self):
-        logger.info(f"Initializing VectorStore with collection: {settings.QDRANT_COLLECTION}")
+        self._client = None
+        self._embedding_model = None
+        self.collection_name = settings.QDRANT_COLLECTION
+        self._initialized = False
+
+    def _ensure_initialized(self):
+        if self._initialized:
+            return
+        logger.info(f"Initializing VectorStore with collection: {self.collection_name}")
         try:
-            # Set HF Token for authenticated requests
             if settings.HF_TOKEN:
                 os.environ["HF_TOKEN"] = settings.HF_TOKEN
                 logger.info("HF_TOKEN set for authenticated requests.")
-            
-            self.client = QdrantClient(
+
+            self._client = QdrantClient(
                 url=settings.QDRANT_URL,
                 api_key=settings.QDRANT_API_KEY
             )
             logger.info("Loading embedding model...")
-            self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
-            self.collection_name = settings.QDRANT_COLLECTION
+            self._embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
             self._init_collection()
+            self._initialized = True
             logger.info("VectorStore initialization complete.")
         except Exception as e:
             logger.error(f"Failed to initialize VectorStore: {str(e)}")
             raise
+
+    @property
+    def client(self):
+        self._ensure_initialized()
+        return self._client
+
+    @property
+    def embedding_model(self):
+        self._ensure_initialized()
+        return self._embedding_model
     
     def _init_collection(self):
         """Initialize collection if it doesn't exist."""
         try:
-            collections = self.client.get_collections().collections
+            collections = self._client.get_collections().collections
             if not any(c.name == self.collection_name for c in collections):
                 logger.info(f"Creating collection: {self.collection_name}")
-                self.client.create_collection(
+                self._client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(
                         size=384,  # all-MiniLM-L6-v2 dimension

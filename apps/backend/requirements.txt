@@ -29,6 +29,8 @@ requests
 python-dotenv
 redis
 celery
+pypdf
+python-json-logger
 
 # Development
 pytest

@@ -1,0 +1,4 @@
+[build]
+  base = "."
+  command = "npx turbo run build --filter @tafiti/frontend"
+  publish = "apps/frontend/dist"
