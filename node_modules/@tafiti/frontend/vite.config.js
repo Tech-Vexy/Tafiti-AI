@@ -29,13 +29,6 @@ export default defineConfig({
                  *  views          — Heavy page views (lazy-loaded anyway, but grouped)
                  */
                 manualChunks(id) {
-                    if (id.includes('node_modules')) {
-                        if (id.includes('react') || id.includes('scheduler')) return 'vendor-core';
-                        if (id.includes('@clerk')) return 'vendor-clerk';
-                        if (id.includes('lucide-react')) return 'vendor-ui';
-                        // Everything else into a generic vendor chunk
-                        return 'vendor-misc';
-                    }
                     // Group heavy view components into their own chunk
                     if (
                         id.includes('GapAnalysisView') ||
