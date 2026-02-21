@@ -12,8 +12,10 @@ logger = get_logger("security")
 security = HTTPBearer()
 
 # Clerk Configuration
-CLERK_JWKS_URL = "https://profound-shrimp-65.clerk.accounts.dev/.well-known/jwks.json"
-CLERK_ISSUER = "https://profound-shrimp-65.clerk.accounts.dev"
+import os
+_CLERK_DOMAIN = os.getenv("CLERK_DOMAIN", "profound-shrimp-65.clerk.accounts.dev")
+CLERK_JWKS_URL = f"https://{_CLERK_DOMAIN}/.well-known/jwks.json"
+CLERK_ISSUER = f"https://{_CLERK_DOMAIN}"
 
 # JWKS Cache
 jwks_cache = {"keys": [], "expires": 0}
