@@ -39,14 +39,14 @@ export default function CTA() {
                         className="flex flex-col sm:flex-row gap-4 justify-center"
                     >
                         <Link
-                            href="/signup"
+                            href="https://app.tafitiai.co.ke/signup"
                             className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold text-lg transition-colors shadow-lg shadow-purple-500/25"
                         >
                             Start Researching Free
                             <ArrowRight className="w-5 h-5" />
                         </Link>
                         <Link
-                            href="/demo"
+                            href="https://app.tafitiai.co.ke/demo"
                             className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold text-lg transition-colors"
                         >
                             Request Demo

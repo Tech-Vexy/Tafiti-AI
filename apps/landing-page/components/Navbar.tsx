@@ -73,7 +73,7 @@ export default function Navbar() {
 
 
                         <Link
-                            href="/login"
+                            href="https://app.tafitiai.co.ke/login"
                             className="px-5 py-2.5 rounded-full bg-black dark:bg-white text-white dark:text-black text-sm font-semibold hover:opacity-90 transition-opacity"
                         >
                             Sign In
@@ -114,7 +114,7 @@ export default function Navbar() {
                             <div className="h-px bg-gray-100 dark:bg-gray-800 my-2" />
 
                             <Link
-                                href="/login"
+                                href="https://app.tafitiai.co.ke/login"
                                 className="w-full py-3 rounded-lg bg-purple-600 text-white font-semibold text-center hover:bg-purple-700 transition-colors"
                             >
                                 Sign In
