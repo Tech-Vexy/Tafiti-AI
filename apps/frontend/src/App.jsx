@@ -601,9 +601,11 @@ const App = () => {
                     <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-600/10 blur-[120px] rounded-full" />
                     <div className="w-full max-w-md animate-fade-in relative z-10 text-center">
                         <div className="glass-card-heavy p-10 border-white/10 shadow-2xl">
-                            <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-emerald-400 rounded-3xl flex items-center justify-center shadow-2xl mb-8 mx-auto transform rotate-6 scale-110">
-                                <Rocket className="text-white w-10 h-10" />
-                            </div>
+                            <img
+                                src="/android-chrome-192x192.png"
+                                alt="Tafiti AI"
+                                className="w-20 h-20 rounded-3xl shadow-2xl mb-8 mx-auto"
+                            />
                             <h1 className="text-4xl font-black tracking-tight text-white mb-4">Tafiti AI</h1>
                             <p className="text-[var(--text-dim)] mb-10 text-lg">Your professional academic network powered by AI.</p>
                             <div className="space-y-4">
