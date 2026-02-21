@@ -1,0 +1,7 @@
+[build]
+  # Ensure binary permissions and run workspace build
+  command = "chmod +x ../../node_modules/.bin/* node_modules/.bin/* 2>/dev/null || true && npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
