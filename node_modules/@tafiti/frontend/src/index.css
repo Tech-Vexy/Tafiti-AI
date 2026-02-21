@@ -48,7 +48,7 @@
 
 @layer components {
     .glass-card {
-        @apply bg-[var(--bg-glass)] border border-[var(--border-glass)] backdrop-blur-2xl rounded-[2rem] transition-all duration-500;
+        @apply bg-[var(--bg-glass)] border border-[var(--border-glass)] backdrop-blur-2xl rounded-2xl sm:rounded-[2rem] transition-all duration-500;
     }
 
     .glass-card:hover {
@@ -56,7 +56,7 @@
     }
 
     .glass-card-heavy {
-        @apply bg-[var(--bg-glass-heavy)] border border-white/5 backdrop-blur-3xl rounded-[2.5rem];
+        @apply bg-[var(--bg-glass-heavy)] border border-white/5 backdrop-blur-3xl rounded-2xl sm:rounded-[2.5rem];
     }
 
     .btn-primary {
@@ -111,6 +111,21 @@
 
 .animate-reveal {
     animation: reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @media print {

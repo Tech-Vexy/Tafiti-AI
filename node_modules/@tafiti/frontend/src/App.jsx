@@ -649,7 +649,7 @@ const App = () => {
                         { icon: HelpCircle, label: 'Support', id: 'support', active: activeTab === 'support', onClick: setActiveTab },
                     ]}
                 >
-                    <div className="max-w-7xl mx-auto pt-12 pb-32 px-8 animate-reveal">
+                    <div className="max-w-7xl mx-auto pt-6 pb-24 px-4 sm:pt-12 sm:pb-32 sm:px-8 animate-reveal">
 
                         {/* ── Trial Banner ──────────────────────────────────────────────────── */}
                         {trialNotStarted && !mergedUser.is_superuser && (
@@ -763,10 +763,10 @@ const App = () => {
                                         />
                                     )
                                 ) : activeTab === 'history' ? (
-                                    <div className="space-y-12 animate-reveal">
+                                    <div className="space-y-8 sm:space-y-12 animate-reveal">
                                         <header>
-                                            <h2 className="text-4xl font-black tracking-tight text-white mb-2">Research History</h2>
-                                            <p className="text-slate-500 font-medium tracking-tight">Access your past syntheses and organized research data.</p>
+                                            <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white mb-1 sm:mb-2">Research History</h2>
+                                            <p className="text-sm sm:text-base text-slate-500 font-medium tracking-tight">Access your past syntheses and organized research data.</p>
                                         </header>
                                         <div className="grid grid-cols-1 gap-6">
                                             {isHistoryLoading ? (
@@ -775,7 +775,7 @@ const App = () => {
                                                 </div>
                                             ) : history.length > 0 ? (
                                                 history.map((item) => (
-                                                    <div key={item.id} className="glass-card-heavy p-8 space-y-4 hover:border-indigo-500/30 transition-all cursor-pointer group" onClick={() => {
+                                                    <div key={item.id} className="glass-card-heavy p-5 sm:p-8 space-y-4 hover:border-indigo-500/30 transition-all cursor-pointer group" onClick={() => {
                                                         setSynthesis(item.answer);
                                                         setLastQuery(item.query);
                                                         setPapers(item.papers);
@@ -808,12 +808,12 @@ const App = () => {
                                     </div>
                                 ) : (
                                     <div className="space-y-12 animate-reveal">
-                                        <header className="flex items-center justify-between">
-                                            <div>
-                                                <h2 className="text-4xl font-black tracking-tight text-white mb-2">
+                                        <header className="flex items-center justify-between gap-4">
+                                            <div className="min-w-0">
+                                                <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white mb-1 sm:mb-2">
                                                     {activeTab === 'feed' ? 'Home' : 'Personal Library'}
                                                 </h2>
-                                                <p className="text-slate-500 font-medium">
+                                                <p className="text-sm sm:text-base text-slate-500 font-medium">
                                                     {activeTab === 'feed' ? 'Explore the latest academic breakthroughs.' : 'Manage your curated research repository.'}
                                                 </p>
                                             </div>
@@ -840,14 +840,14 @@ const App = () => {
                                                 {/* Feed Results */}
                                                 {papers.length > 0 ? (
                                                     <div className="space-y-10 animate-reveal">
-                                                        <div className="flex items-center justify-between px-2">
-                                                            <div className="flex items-center gap-4">
-                                                                <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 transition-transform hover:scale-110">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 transition-transform hover:scale-110 shrink-0">
                                                                     <Layers className="w-5 h-5" />
                                                                 </div>
-                                                                <h3 className="text-lg font-black tracking-tight">Results for "{lastQuery}"</h3>
+                                                                <h3 className="text-base sm:text-lg font-black tracking-tight truncate">Results for "{lastQuery}"</h3>
                                                             </div>
-                                                            <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-3 flex-wrap">
                                                                 {/* Language selector */}
                                                                 <div className="relative flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/30 transition-all group">
                                                                     <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
@@ -914,12 +914,12 @@ const App = () => {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="glass-card p-24 text-center space-y-6 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] transition-colors group cursor-default">
-                                                        <div className="w-24 h-24 bg-white/5 rounded-[2.5rem] mx-auto flex items-center justify-center group-hover:rotate-12 transition-transform duration-700">
-                                                            <Rocket className="text-white/20 w-12 h-12" />
+                                                    <div className="glass-card p-12 sm:p-24 text-center space-y-6 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] transition-colors group cursor-default">
+                                                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white/5 rounded-[2.5rem] mx-auto flex items-center justify-center group-hover:rotate-12 transition-transform duration-700">
+                                                            <Rocket className="text-white/20 w-10 h-10 sm:w-12 sm:h-12" />
                                                         </div>
                                                         <div className="space-y-2">
-                                                            <h3 className="text-2xl font-black text-white/40 tracking-tight">Your feed is ready.</h3>
+                                                            <h3 className="text-xl sm:text-2xl font-black text-white/40 tracking-tight">Your feed is ready.</h3>
                                                             <p className="text-sm text-slate-500 max-w-xs mx-auto font-medium leading-relaxed">Search for a topic or check out the trending research in your field.</p>
                                                         </div>
                                                     </div>
@@ -944,20 +944,20 @@ const App = () => {
                                                             </div>
                                                         ) : history.length > 0 ? (
                                                             history.slice(0, 5).map((item) => (
-                                                                <div key={item.id} className="glass-card-heavy p-8 space-y-4 hover:border-indigo-500/30 transition-all cursor-pointer group" onClick={() => {
+                                                                <div key={item.id} className="glass-card-heavy p-5 sm:p-8 space-y-4 hover:border-indigo-500/30 transition-all cursor-pointer group" onClick={() => {
                                                                     setSynthesis(item.answer);
                                                                     setLastQuery(item.query);
                                                                     setPapers(item.papers);
                                                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                                                 }}>
-                                                                    <div className="flex items-center justify-between mb-2">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <div className="w-8 h-8 bg-indigo-500/10 rounded-lg flex items-center justify-center">
+                                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                                                        <div className="flex items-center gap-3 min-w-0">
+                                                                            <div className="w-8 h-8 bg-indigo-500/10 rounded-lg flex items-center justify-center shrink-0">
                                                                                 <Sparkles className="w-4 h-4 text-indigo-400" />
                                                                             </div>
-                                                                            <h3 className="font-black text-xl text-white group-hover:text-indigo-400 transition-colors uppercase tracking-tight">{item.title}</h3>
+                                                                            <h3 className="font-black text-base sm:text-xl text-white group-hover:text-indigo-400 transition-colors uppercase tracking-tight truncate">{item.title}</h3>
                                                                         </div>
-                                                                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{new Date(item.created_at).toLocaleDateString()}</span>
+                                                                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest shrink-0 ml-11 sm:ml-0">{new Date(item.created_at).toLocaleDateString()}</span>
                                                                     </div>
                                                                     <p className="text-slate-500 line-clamp-2 text-sm leading-relaxed">{item.answer}</p>
                                                                     <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-slate-500 pt-4 border-t border-white/5">

@@ -27,61 +27,63 @@ export const SynthesisView = ({ synthesis, papers, isLoading, onClip, language =
     };
 
     return (
-        <div className="w-full glass-card-heavy p-8 mt-12 animate-fade-in relative overflow-hidden">
+        <div className="w-full glass-card-heavy p-4 sm:p-8 mt-8 sm:mt-12 animate-fade-in relative overflow-hidden">
             {/* AI Glow Effect */}
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-emerald-400 to-indigo-500 shadow-[0_0_20px_var(--primary-glow)]" />
 
-            <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center">
-                    <Sparkles className="text-indigo-400 w-5 h-5 glow-pulse" />
-                </div>
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-2xl font-black tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
-                            AI Research Synthesis
-                        </h2>
-                        {language && language !== 'English' && (
-                            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest">
-                                <Globe className="w-3 h-3" />
-                                {language}
-                            </span>
-                        )}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 sm:mb-8">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center shrink-0">
+                        <Sparkles className="text-indigo-400 w-5 h-5 glow-pulse" />
                     </div>
-                    <p className="text-xs text-[var(--text-muted)] font-bold uppercase tracking-widest mt-0.5">
-                        Powered by {papers.length} selected sources
-                    </p>
+                    <div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <h2 className="text-xl sm:text-2xl font-black tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
+                                AI Research Synthesis
+                            </h2>
+                            {language && language !== 'English' && (
+                                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest">
+                                    <Globe className="w-3 h-3" />
+                                    {language}
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] font-bold uppercase tracking-widest mt-0.5">
+                            Powered by {papers.length} selected sources
+                        </p>
+                    </div>
                 </div>
                 {synthesis && !isLoading && (
-                    <div className="ml-auto flex items-center gap-3">
+                    <div className="sm:ml-auto flex items-center gap-2 sm:gap-3 flex-wrap">
                         <button
                             onClick={handleDownload}
-                            className="no-print flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 rounded-2xl font-bold transition-all active:scale-95 group"
+                            className="no-print flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 rounded-2xl font-bold transition-all active:scale-95 group text-sm"
                             title="Download Markdown"
                         >
                             <Download className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
-                            Download
+                            <span className="hidden sm:inline">Download</span>
                         </button>
                         <button
                             onClick={() => window.print()}
-                            className="no-print flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 rounded-2xl font-bold transition-all active:scale-95 group"
+                            className="no-print flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 rounded-2xl font-bold transition-all active:scale-95 group text-sm"
                             title="Print Synthesis"
                         >
                             <Printer className="w-4 h-4 group-hover:rotate-6 transition-transform" />
-                            Print
+                            <span className="hidden sm:inline">Print</span>
                         </button>
                         <button
                             onClick={() => onClip && onClip(synthesis, papers)}
-                            className="no-print flex items-center gap-2 px-6 py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-2xl font-bold transition-all active:scale-95 group"
+                            className="no-print flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-2xl font-bold transition-all active:scale-95 group text-sm"
                         >
                             <FileText className="w-4 h-4 group-hover:rotate-6 transition-transform" />
-                            Clip to Notes
+                            <span className="hidden sm:inline">Clip to Notes</span>
                         </button>
                     </div>
                 )}
             </div>
 
             <div className="prose prose-invert max-w-none">
-                <div className="text-[var(--text-dim)] leading-relaxed text-lg whitespace-pre-wrap">
+                <div className="text-[var(--text-dim)] leading-relaxed text-base sm:text-lg whitespace-pre-wrap break-words">
                     {synthesis ? (
                         <ReactMarkdown
                             components={{

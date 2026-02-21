@@ -82,8 +82,8 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                     type="text"
                     value={query}
                     onChange={e => setQuery(e.target.value)}
-                    placeholder="What are you researching today?  (⌘K)"
-                    className="flex-1 bg-transparent border-none outline-none text-lg py-3 pr-4 text-[var(--text-main)] placeholder:text-[var(--text-muted)]"
+                    placeholder="What are you researching today?"
+                    className="flex-1 bg-transparent border-none outline-none text-base sm:text-lg py-3 pr-2 sm:pr-4 text-[var(--text-main)] placeholder:text-[var(--text-muted)] min-w-0"
                     disabled={isLoading}
                 />
 
@@ -111,7 +111,7 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                         type="submit"
                         disabled={isLoading || !query.trim()}
                         className={`
-                            px-6 py-3 rounded-xl font-bold transition-all duration-300
+                            px-4 sm:px-6 py-3 rounded-xl font-bold transition-all duration-300
                             ${query.trim()
                                 ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95'
                                 : 'bg-white/5 text-[var(--text-muted)] cursor-not-allowed'}
@@ -140,7 +140,7 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                         )}
                     </div>
 
-                    <div className="grid grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                         {/* Year range */}
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">

@@ -25,7 +25,7 @@ export const PaperCard = React.memo(function PaperCard({
         <div
             onClick={() => onSelect(paper)}
             className={`
-                glass-card p-8 cursor-pointer transition-all duration-700 group relative overflow-hidden backdrop-blur-3xl animate-reveal
+                glass-card p-5 sm:p-8 cursor-pointer transition-all duration-700 group relative overflow-hidden backdrop-blur-3xl animate-reveal
                 ${isSelected
                     ? 'ring-2 ring-indigo-500 bg-indigo-500/[0.04] translate-y-[-8px] shadow-2xl shadow-indigo-500/20'
                     : 'hover:bg-white/[0.04]'}
@@ -35,13 +35,13 @@ export const PaperCard = React.memo(function PaperCard({
             <div className={`absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/10 blur-[80px] rounded-full transition-opacity duration-700 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
 
             {/* Top Section: Badges & Actions */}
-            <div className="flex justify-between items-start mb-8 relative z-10">
+            <div className="flex justify-between items-start mb-5 sm:mb-8 relative z-10">
                 <div className="flex items-center gap-2">
                     <div className="px-4 py-1.5 bg-indigo-500/10 text-indigo-300 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-indigo-500/20 backdrop-blur-md">
                         {paper.source || 'OpenAlex'}
                     </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2 sm:gap-3">
                     <button
                         onClick={handleImpactClick}
                         className={`p-2.5 rounded-xl transition-all duration-300 border ${showImpact ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' : 'text-slate-500 bg-white/5 border-white/5 hover:text-indigo-300 hover:border-indigo-500/20'}`}
@@ -103,7 +103,7 @@ export const PaperCard = React.memo(function PaperCard({
                     </div>
                 ) : (
                     <>
-                        <div className="flex flex-wrap items-center gap-6 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-[10px] font-black uppercase tracking-widest text-slate-500">
                             <div className="flex items-center gap-2 group/author cursor-help">
                                 <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center border border-white/5 group-hover/author:border-indigo-500/30 transition-colors">
                                     <User className="w-3 h-3 group-hover/author:text-indigo-400 transition-colors" />
@@ -128,7 +128,7 @@ export const PaperCard = React.memo(function PaperCard({
             </div>
 
             {/* Action Area */}
-            <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between relative z-10">
+            <div className="mt-5 sm:mt-8 pt-4 sm:pt-6 border-t border-white/5 flex items-center justify-between relative z-10">
                 <div className={`flex items-center gap-2 transition-all duration-500 ${isSelected ? 'translate-x-0 opacity-100' : '-translate-x-4 opacity-0 group-hover:translate-x-0 group-hover:opacity-100'}`}>
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Ready for Synthesis</span>
                     <ChevronRight className="w-3 h-3 text-indigo-400" />
