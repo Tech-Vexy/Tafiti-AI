@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Hero() {
     return (
@@ -34,7 +35,7 @@ export default function Hero() {
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                         <Link
-                            href="/dashboard"
+                            href="https://app.tafitiai.co.ke/dashboard"
                             className="group flex items-center gap-2 bg-black dark:bg-white text-white dark:text-black px-8 py-4 rounded-full font-semibold text-lg hover:scale-105 transition-transform"
                         >
                             Get Started Free
@@ -49,18 +50,20 @@ export default function Hero() {
                     </div>
                 </motion.div>
 
-                {/* Mockup / Visual Element */}
+                {/* Logo */}
                 <motion.div
                     initial={{ opacity: 0, y: 40 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4, duration: 0.8 }}
-                    className="mt-20 relative mx-auto max-w-5xl"
+                    className="mt-20 relative mx-auto"
                 >
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-black/50 backdrop-blur-xl shadow-2xl p-4 overflow-hidden">
-                        <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800 rounded-lg flex items-center justify-center border border-gray-200 dark:border-gray-700/50">
-                            <span className="text-gray-400 dark:text-gray-600 font-mono text-sm">[ Interactive Research Dashboard Preview ]</span>
-                        </div>
-                    </div>
+                    <Image
+                        src="/logo.png"
+                        alt="Tafiti AI"
+                        width={180}
+                        height={180}
+                        className="mx-auto object-contain"
+                    />
                 </motion.div>
             </div>
         </section>
