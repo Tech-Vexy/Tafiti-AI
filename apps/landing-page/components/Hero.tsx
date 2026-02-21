@@ -35,7 +35,7 @@ export default function Hero() {
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                         <Link
-                            href="https://app.tafitiai.co.ke/dashboard"
+                            href="https://app.tafitiai.co.ke"
                             className="group flex items-center gap-2 bg-black dark:bg-white text-white dark:text-black px-8 py-4 rounded-full font-semibold text-lg hover:scale-105 transition-transform"
                         >
                             Get Started Free

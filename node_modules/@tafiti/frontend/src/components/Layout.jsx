@@ -175,7 +175,7 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
             {/* Main Content */}
             <main className="flex-1 min-h-screen relative overflow-y-auto custom-scrollbar">
                 {/* Mobile Header */}
-                <header className="sticky top-0 z-40 bg-[var(--bg-main)]/80 backdrop-blur-xl border-b border-white/5 p-6 flex items-center justify-between">
+                <header className="sticky top-0 z-40 bg-[var(--bg-main)]/80 backdrop-blur-xl border-b border-white/5 px-4 py-3 sm:p-6 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button className="lg:hidden p-2 glass-card rounded-xl" onClick={() => setIsSidebarOpen(true)}>
                             <Menu className="text-white w-6 h-6" />
@@ -201,7 +201,7 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                             </button>
 
                             {isNotifOpen && (
-                                <div className="absolute right-0 mt-4 w-80 glass-card-heavy border-white/10 shadow-2xl z-50 p-2 overflow-hidden animate-slide-up">
+                                <div className="absolute right-0 mt-4 w-[calc(100vw-2rem)] sm:w-80 max-w-sm glass-card-heavy border-white/10 shadow-2xl z-50 p-2 overflow-hidden animate-slide-up">
                                     <div className="p-4 border-b border-white/5 flex items-center justify-between">
                                         <h3 className="text-xs font-black uppercase tracking-widest text-white">Scholar Alerts</h3>
                                         <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-bold">{unreadNotifications} New</span>
@@ -250,10 +250,33 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                     </div>
                 </header>
 
-                <div className="relative z-10 h-full">
+                <div className="relative z-10 h-full pb-20 lg:pb-0">
                     {children}
                 </div>
             </main>
+
+            {/* Mobile Bottom Navigation */}
+            <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-[var(--bg-sidebar)]/90 backdrop-blur-xl border-t border-white/5">
+                <div className="flex items-center justify-around px-2 py-2">
+                    {navItems.slice(0, 5).map((item) => (
+                        <button
+                            key={item.label}
+                            onClick={() => item.onClick && item.onClick(item.id)}
+                            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all ${item.active ? 'text-indigo-400' : 'text-slate-500'}`}
+                        >
+                            <item.icon className="w-5 h-5" />
+                            <span className="text-[10px] font-bold tracking-tight">{item.label}</span>
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all text-slate-500"
+                    >
+                        <Menu className="w-5 h-5" />
+                        <span className="text-[10px] font-bold tracking-tight">More</span>
+                    </button>
+                </div>
+            </nav>
         </div>
     );
 };
