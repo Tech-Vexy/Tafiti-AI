@@ -475,8 +475,8 @@ const App = () => {
 
         try {
             const token = await getToken();
-            const endpoint = isCollaborative ? '/api/v1/research/synthesize/collaborative' : '/api/v1/research/synthesize/stream';
-            const response = await fetch(endpoint, {
+            const endpoint = isCollaborative ? '/research/synthesize/collaborative' : '/research/synthesize/stream';
+            const response = await fetch(`${api.defaults.baseURL}${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
