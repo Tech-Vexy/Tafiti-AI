@@ -14,8 +14,20 @@ from app.models.schemas import (
     CitationGraphResponse
 )
 from app.models.schemas_chat import ChatMessage, ChatResearchRequest
-from app.services.openalex_service import get_openalex_service
+from app.services.openalex_service import (
+    get_openalex_service,
+    get_semantic_scholar_service,
+    get_arxiv_service,
+    get_core_service,
+    get_elsevier_service,
+    get_pubmed_service,
+    get_doaj_service,
+    get_ajol_service,
+    get_africarxiv_service,
+)
 from app.agents.research_agent import get_research_agent
+from app.agents.critic_agent import validated_synthesis, ValidatedSynthesis
+from app.services.vector_service import vector_store
 from app.core.security import get_current_user
 from app.core.subscription import require_trial_or_active
 from app.models.database import ResearchSession, SearchHistory
@@ -35,17 +47,76 @@ async def search_papers(
     db: AsyncSession = Depends(get_db)
 ):
     start_time = time.time()
-    openalex = get_openalex_service(client=request.app.state.http_client)
-    
-    papers = await openalex.search_papers(
-        query=search_request.query,
-        limit=search_request.limit,
-        filters=search_request.filters
+    http = request.app.state.http_client
+    per_source = max(5, search_request.limit // 2)
+
+    # Instantiate all nine source services
+    openalex    = get_openalex_service(client=http)
+    s2          = get_semantic_scholar_service(client=http)
+    arxiv       = get_arxiv_service(client=http)
+    core        = get_core_service(client=http)
+    elsevier    = get_elsevier_service(client=http)
+    pubmed      = get_pubmed_service(client=http)
+    doaj        = get_doaj_service(client=http)
+    ajol        = get_ajol_service(client=http)
+    africarxiv  = get_africarxiv_service(client=http)
+
+    # Fan-out: all nine sources run fully in parallel
+    (
+        oa_results, s2_results, arxiv_results,
+        core_results, elsevier_results, pubmed_results,
+        doaj_results, ajol_results, africarxiv_results,
+    ) = await asyncio.gather(
+        openalex.search_papers(
+            query=search_request.query,
+            limit=search_request.limit,
+            filters=search_request.filters,
+        ),
+        s2.search_papers(query=search_request.query, limit=per_source),
+        arxiv.search_papers(query=search_request.query, limit=per_source),
+        core.search_papers(query=search_request.query, limit=per_source),
+        elsevier.search_papers(query=search_request.query, limit=per_source),
+        pubmed.search_papers(query=search_request.query, limit=per_source),
+        doaj.search_papers(query=search_request.query, limit=per_source),
+        ajol.search_papers(query=search_request.query, limit=per_source),
+        africarxiv.search_papers(query=search_request.query, limit=per_source),
+        return_exceptions=True,
     )
-    
+
+    # Merge: OpenAlex first (highest quality metadata), then deduplicate by ID
+    papers: list = oa_results if isinstance(oa_results, list) else []
+    seen_ids = {p.id for p in papers}
+    source_counts: dict = {
+        "openalex": len(oa_results) if isinstance(oa_results, list) else 0,
+    }
+    for label, batch in (
+        ("s2", s2_results),
+        ("arxiv", arxiv_results),
+        ("core", core_results),
+        ("elsevier", elsevier_results),
+        ("pubmed", pubmed_results),
+        ("doaj", doaj_results),
+        ("ajol", ajol_results),
+        ("africarxiv", africarxiv_results),
+    ):
+        count = 0
+        if isinstance(batch, list):
+            for p in batch:
+                if p.id not in seen_ids:
+                    papers.append(p)
+                    seen_ids.add(p.id)
+                    count += 1
+        elif isinstance(batch, Exception):
+            logger.warning(f"{label} source error: {batch}")
+        source_counts[label] = count
+
     elapsed = time.time() - start_time
-    logger.info(f"Paper search for '{search_request.query}' completed in {elapsed:.4f}s")
-    
+    logger.info(
+        f"Paper search for '{search_request.query}' completed in {elapsed:.4f}s | "
+        + " + ".join(f"{v} {k}" for k, v in source_counts.items())
+        + f" = {len(papers)} total"
+    )
+
     # Record search history
     try:
         history = SearchHistory(
@@ -84,11 +155,24 @@ async def synthesize(
         provider=synth_request.provider,
         model=synth_request.model
     )
-    
+
+    # RAG: index the current papers, then retrieve the most relevant chunks
+    # to enrich the synthesis context beyond what the user explicitly selected.
+    rag_context = ""
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, vector_store.index_papers, synth_request.papers)
+        rag_context = await loop.run_in_executor(
+            None, vector_store.retrieve_rag_context, synth_request.query
+        )
+    except Exception as rag_err:
+        logger.warning(f"RAG enrichment skipped: {rag_err}")
+
     result = await agent.synthesize(
         query=synth_request.query,
         papers=synth_request.papers,
-        output_language=synth_request.output_language or "English"
+        output_language=synth_request.output_language or "English",
+        rag_context=rag_context,
     )
     
     processing_time = time.time() - start_time
@@ -118,6 +202,40 @@ async def synthesize(
     )
 
 
+@router.post("/synthesize/validated")
+async def synthesize_validated(
+    request: Request,
+    synth_request: SynthesisRequest,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+):
+    """
+    Drafter + Critic multi-agent synthesis.
+    Uses Gemini for drafting and Groq for citation validation.
+    Returns the synthesis with per-citation confidence scores and flagged unsupported claims.
+    """
+    if not synth_request.papers:
+        raise HTTPException(status_code=400, detail="No papers provided")
+
+    start_time = time.time()
+    result: ValidatedSynthesis = await validated_synthesis(
+        query=synth_request.query,
+        papers=synth_request.papers,
+        output_language=synth_request.output_language or "English",
+    )
+    processing_time = time.time() - start_time
+
+    return {
+        "answer": result.draft,
+        "citations": [c.model_dump() for c in result.citations],
+        "flagged_count": result.flagged_count,
+        "overall_confidence": result.overall_confidence,
+        "critique_summary": result.critique_summary,
+        "processing_time": processing_time,
+        "sources_used": list(range(1, len(synth_request.papers) + 1)),
+    }
+
+
 @router.post("/synthesize/stream")
 async def synthesize_streaming(
     request: Request,
@@ -132,14 +250,26 @@ async def synthesize_streaming(
         provider=synth_request.provider,
         model=synth_request.model
     )
-    
+
+    # RAG enrichment (best-effort, non-blocking)
+    rag_context = ""
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, vector_store.index_papers, synth_request.papers)
+        rag_context = await loop.run_in_executor(
+            None, vector_store.retrieve_rag_context, synth_request.query
+        )
+    except Exception as rag_err:
+        logger.warning(f"RAG enrichment skipped (stream): {rag_err}")
+
     async def generate():
         logger.info(f"Starting streaming synthesis for query: {synth_request.query}")
         try:
             async for chunk in agent.synthesize_streaming(
                 query=synth_request.query,
                 papers=synth_request.papers,
-                output_language=synth_request.output_language or "English"
+                output_language=synth_request.output_language or "English",
+                rag_context=rag_context,
             ):
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
         except Exception as e:

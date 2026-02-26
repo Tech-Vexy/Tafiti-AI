@@ -5,7 +5,7 @@ from typing import List
 import logging
 
 from app.db.session import get_db
-from app.api.auth import get_current_user
+from app.core.security import get_current_user
 from app.models.database import User, ResearchProject, ProjectMember, ProjectActivity, Notification
 from app.models.schemas import (
     ProjectCreate, ProjectResponse, ProjectMemberResponse, 
@@ -140,6 +140,130 @@ async def invite_member(
     
     await db.commit()
     return {"message": "Invitation sent successfully"}
+
+@router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a project (owner only)."""
+    membership = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user["user_id"],
+            ProjectMember.role == "owner",
+        )
+    )
+    if not membership.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Only the project owner can delete it")
+    project = await db.get(ResearchProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await db.delete(project)
+    await db.commit()
+    return {"status": "deleted"}
+
+
+@router.delete("/projects/{project_id}/members/{member_user_id}")
+async def remove_member(
+    project_id: int,
+    member_user_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove a member from a project (owner only, cannot remove self)."""
+    if member_user_id == current_user["user_id"]:
+        raise HTTPException(status_code=400, detail="Use delete project to remove yourself as owner")
+    owner_check = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user["user_id"],
+            ProjectMember.role == "owner",
+        )
+    )
+    if not owner_check.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Only the project owner can remove members")
+    target = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == member_user_id,
+        )
+    )
+    member = target.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    await db.delete(member)
+    await db.commit()
+    return {"status": "removed"}
+
+
+@router.patch("/projects/{project_id}/members/{member_user_id}/role")
+async def update_member_role(
+    project_id: int,
+    member_user_id: str,
+    role: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a member's role (owner only). Allowed: editor, viewer."""
+    if role not in ("editor", "viewer"):
+        raise HTTPException(status_code=400, detail="Role must be 'editor' or 'viewer'")
+    owner_check = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user["user_id"],
+            ProjectMember.role == "owner",
+        )
+    )
+    if not owner_check.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Only the project owner can change roles")
+    target = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == member_user_id,
+        )
+    )
+    member = target.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    member.role = role
+    await db.commit()
+    return {"status": "updated", "role": role}
+
+
+@router.post("/projects/{project_id}/invite-email")
+async def invite_by_email(
+    project_id: int,
+    email: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Invite a user to a project by email (creates a notification if they exist)."""
+    membership = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user["user_id"],
+            ProjectMember.role.in_(["owner", "editor"]),
+        )
+    )
+    if not membership.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    project = await db.get(ResearchProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    target = await db.execute(select(User).where(User.email == email))
+    user = target.scalar_one_or_none()
+    if user:
+        db.add(Notification(
+            user_id=user.id,
+            type="project_invite",
+            content=f"You've been invited to join '{project.title}'",
+            link=f"/projects/{project_id}",
+        ))
+        await db.commit()
+    return {"status": "invite_sent", "email": email}
+
 
 @router.get("/projects/{project_id}/activity", response_model=List[ProjectActivityResponse])
 async def get_project_activity(

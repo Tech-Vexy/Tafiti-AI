@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timedelta
 import os
+import hmac
+import hashlib
 
 from app.db.session import get_db
 from app.models.database import User
@@ -82,9 +84,20 @@ async def paystack_webhook(
     """
     Handle Paystack webhooks for asynchronous events.
     """
-    # In a real app, we would verify the signature here
-    # For now, we'll process the event directly (CAUTION)
-    payload = await request.json()
+    # Verify Paystack HMAC-SHA512 signature
+    secret_key = os.getenv("PAYSTACK_SECRET_KEY", "")
+    raw_body = await request.body()
+    if secret_key and x_paystack_signature:
+        expected = hmac.new(
+            secret_key.encode("utf-8"), raw_body, hashlib.sha512
+        ).hexdigest()
+        if not hmac.compare_digest(expected, x_paystack_signature):
+            raise HTTPException(status_code=400, detail="Invalid webhook signature")
+    elif secret_key and not x_paystack_signature:
+        raise HTTPException(status_code=400, detail="Missing webhook signature")
+
+    import json
+    payload = json.loads(raw_body)
     event = payload.get("event")
     
     if event == "charge.success":

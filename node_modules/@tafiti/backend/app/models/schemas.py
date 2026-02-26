@@ -114,7 +114,7 @@ class PaperBase(BaseModel):
 
 class PaperSearchRequest(BaseModel):
     query: str = Field(..., min_length=3)
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=10, ge=1, le=50)
     filters: Optional[dict] = None
 
 
@@ -175,7 +175,7 @@ class SavedQueryResponse(SavedQueryBase):
 # User Settings Schemas
 class UserSettingsBase(BaseModel):
     theme: str = "dark"
-    default_paper_limit: int = Field(default=5, ge=1, le=20)
+    default_paper_limit: int = Field(default=10, ge=1, le=50)
     llm_provider: str = "groq"
     llm_model: Optional[str] = None
     auto_export: bool = False
@@ -185,7 +185,7 @@ class UserSettingsBase(BaseModel):
 
 class UserSettingsUpdate(BaseModel):
     theme: Optional[str] = None
-    default_paper_limit: Optional[int] = Field(None, ge=1, le=20)
+    default_paper_limit: Optional[int] = Field(None, ge=1, le=50)
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     auto_export: Optional[bool] = None

@@ -15,6 +15,7 @@ import { ProfileCard } from './components/ProfileCard';
 import { PreferenceForm } from './components/Recommendations';
 
 // Heavy views — lazy-loaded so they only download when first visited
+const FeedView = React.lazy(() => import('./components/FeedView').then(m => ({ default: m.FeedView })));
 const SynthesisView = React.lazy(() => import('./components/SynthesisView').then(m => ({ default: m.SynthesisView })));
 const ProfileView = React.lazy(() => import('./components/ProfileView').then(m => ({ default: m.ProfileView })));
 const BillingView = React.lazy(() => import('./components/BillingView').then(m => ({ default: m.BillingView })));
@@ -26,6 +27,9 @@ const GapAnalysisView = React.lazy(() => import('./components/GapAnalysisView'))
 const SupportView = React.lazy(() => import('./components/SupportView').then(m => ({ default: m.SupportView })));
 const CitationGraphView = React.lazy(() => import('./components/CitationGraphView'));
 const TrialFeedbackModal = React.lazy(() => import('./components/TrialFeedbackModal'));
+const BountiesView = React.lazy(() => import('./components/BountiesView').then(m => ({ default: m.BountiesView || m.default })));
+const SandboxesView = React.lazy(() => import('./components/SandboxesView').then(m => ({ default: m.SandboxesView || m.default })));
+const AnchorsView = React.lazy(() => import('./components/AnchorsView').then(m => ({ default: m.AnchorsView || m.default })));
 import api from './api/client';
 import { useToast } from './hooks/useToast';
 
@@ -62,23 +66,7 @@ const PremiumBarrier = ({ title, trialNotStarted, isStartingTrial, handleStartTr
     </div>
 );
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { MessageSquare, Layers, Sparkles, Rocket, ArrowRight, Settings2, Activity, Bookmark, User, FileText, History, Loader2, Compass, CreditCard, Users, Settings, HelpCircle, FlaskConical, Globe } from 'lucide-react';
-
-const LANGUAGES = [
-    { label: 'English', value: 'English' },
-    { label: 'Kiswahili', value: 'Kiswahili' },
-    { label: 'Français', value: 'French' },
-    { label: 'العربية', value: 'Arabic' },
-    { label: 'Español', value: 'Spanish' },
-    { label: 'Português', value: 'Portuguese' },
-    { label: 'हिन्दी', value: 'Hindi' },
-    { label: 'Deutsch', value: 'German' },
-    { label: '中文', value: 'Chinese (Simplified)' },
-    { label: 'Amharic', value: 'Amharic' },
-    { label: 'Yoruba', value: 'Yoruba' },
-    { label: 'Hausa', value: 'Hausa' },
-    { label: 'Zulu', value: 'Zulu' },
-];
+import { MessageSquare, Sparkles, Rocket, ArrowRight, Bookmark, User, FileText, History, Loader2, Compass, CreditCard, Users, Settings, HelpCircle, FlaskConical, Trophy, Building2, Shield } from 'lucide-react';
 
 const App = () => {
     const { getToken } = useAuth();
@@ -118,6 +106,8 @@ const App = () => {
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [similarResearchers, setSimilarResearchers] = useState([]);
     const [isLoadingSimilar, setIsLoadingSimilar] = useState(false);
+    const [discoverPapers, setDiscoverPapers] = useState([]);
+    const [isLoadingDiscover, setIsLoadingDiscover] = useState(false);
     const [userProfile, setUserProfile] = useState(null);
     const [messages, setMessages] = useState([]);
     const [isChatLoading, setIsChatLoading] = useState(false);
@@ -129,6 +119,7 @@ const App = () => {
     const [isImpactLoading, setIsImpactLoading] = useState({}); // { paperId: boolean }
     const [isCollaborative, setIsCollaborative] = useState(false);
     const [followupQuestions, setFollowupQuestions] = useState([]);
+    const [selectedProject, setSelectedProject] = useState(null);
     const [outputLanguage, setOutputLanguage] = useState('English');
     const [synthesisLanguage, setSynthesisLanguage] = useState('English'); // language used for current synthesis
     const [graphPaper, setGraphPaper] = useState(null); // paper to show in citation graph modal
@@ -283,6 +274,9 @@ const App = () => {
             const response = await api.post('/research/recommendations', preferences);
             setRecs(response.data);
             setShowPreferenceForm(false);
+
+            // Refresh personalized papers after profile update
+            fetchDiscoverPapers();
         } catch (error) {
             console.error('Failed to fetch recommendations:', error);
         } finally {
@@ -405,6 +399,19 @@ const App = () => {
             console.error('Failed to fetch similar researchers:', error);
         } finally {
             setIsLoadingSimilar(false);
+        }
+    };
+
+    const fetchDiscoverPapers = async () => {
+        setIsLoadingDiscover(true);
+        try {
+            const response = await api.get('/research/recommendations/papers');
+            setDiscoverPapers(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+            console.error('Failed to fetch discover papers:', error);
+            setDiscoverPapers([]);
+        } finally {
+            setIsLoadingDiscover(false);
         }
     };
 
@@ -537,6 +544,7 @@ const App = () => {
             fetchHistory();
             fetchUserProfile();
             fetchNotifications();
+            fetchDiscoverPapers();
         }
     }, [clerkUser]);
 
@@ -596,31 +604,77 @@ const App = () => {
     return (
         <>
             <SignedOut>
-                <div className="min-h-screen w-full bg-[var(--bg-main)] flex items-center justify-center p-4 relative overflow-hidden">
-                    <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/10 blur-[120px] rounded-full" />
-                    <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-600/10 blur-[120px] rounded-full" />
-                    <div className="w-full max-w-md animate-fade-in relative z-10 text-center">
-                        <div className="glass-card-heavy p-10 border-white/10 shadow-2xl">
-                            <img
-                                src="/android-chrome-192x192.png"
-                                alt="Tafiti AI"
-                                className="w-20 h-20 rounded-3xl shadow-2xl mb-8 mx-auto"
-                            />
-                            <h1 className="text-4xl font-black tracking-tight text-white mb-4">Tafiti AI</h1>
-                            <p className="text-[var(--text-dim)] mb-10 text-lg">Your professional academic network powered by AI.</p>
-                            <div className="space-y-4">
-                                <SignInButton mode="modal">
-                                    <button className="w-full btn-primary h-14 text-lg font-bold flex items-center justify-center gap-2 group">
-                                        Sign In
-                                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                                    </button>
-                                </SignInButton>
-                                <SignUpButton mode="modal">
-                                    <button className="w-full py-4 rounded-xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">Create Account</button>
-                                </SignUpButton>
-                            </div>
+                <div className="min-h-screen w-full bg-[var(--bg-main)] relative overflow-hidden flex flex-col">
+                    {/* Background glows */}
+                    <div className="absolute top-[-15%] left-[-10%] w-[55%] h-[55%] bg-indigo-600/10 blur-[140px] rounded-full pointer-events-none" />
+                    <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-600/8 blur-[140px] rounded-full pointer-events-none" />
+                    <div className="absolute top-[40%] right-[20%] w-[30%] h-[30%] bg-violet-600/6 blur-[100px] rounded-full pointer-events-none" />
+
+                    {/* Minimal header */}
+                    <header className="relative z-10 flex items-center justify-between px-6 sm:px-12 py-6">
+                        <div className="flex items-center gap-3">
+                            <img src="/android-chrome-192x192.png" alt="Tafiti AI" className="w-8 h-8 rounded-xl" />
+                            <span className="font-black text-lg tracking-tight text-white">Tafiti AI</span>
                         </div>
-                    </div>
+                        <SignInButton mode="modal">
+                            <button className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white font-semibold hover:bg-white/10 transition-all">
+                                Sign in
+                            </button>
+                        </SignInButton>
+                    </header>
+
+                    {/* Hero */}
+                    <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 sm:py-24 relative z-10 text-center">
+                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-8 animate-fade-in">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Built for African researchers
+                        </div>
+
+                        <h1 className="text-5xl sm:text-7xl font-black tracking-tight text-white mb-6 leading-[1.05] max-w-3xl animate-reveal">
+                            Research smarter.<br />
+                            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-violet-400 to-emerald-400">Publish faster.</span>
+                        </h1>
+                        <p className="text-lg sm:text-xl text-slate-400 mb-10 max-w-xl leading-relaxed animate-reveal" style={{ animationDelay: '0.1s' }}>
+                            AI synthesis, gap analysis, peer review bounties, and IPFS anchoring — purpose-built for academic researchers across Africa.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-3 mb-20 animate-reveal" style={{ animationDelay: '0.2s' }}>
+                            <SignUpButton mode="modal">
+                                <button className="btn-primary px-10 py-4 text-base font-black flex items-center justify-center gap-2 group">
+                                    Get Started Free
+                                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            </SignUpButton>
+                            <SignInButton mode="modal">
+                                <button className="px-10 py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all text-base">
+                                    Sign In
+                                </button>
+                            </SignInButton>
+                        </div>
+
+                        {/* Feature highlights */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl w-full animate-reveal" style={{ animationDelay: '0.3s' }}>
+                            {[
+                                { icon: Sparkles, color: 'indigo', title: 'AI Synthesis', desc: 'Multi-paper synthesis in 13 African & global languages' },
+                                { icon: FlaskConical, color: 'violet', title: 'Gap Analysis', desc: 'Identify research gaps and future directions automatically' },
+                                { icon: Users, color: 'emerald', title: 'Collaboration', desc: 'Invite co-authors, share projects, connect with peers' },
+                                { icon: Shield, color: 'amber', title: 'Draft Anchoring', desc: 'Prove prior art with cryptographic SHA-256 hashing' },
+                            ].map(({ icon: Icon, color, title, desc }) => (
+                                <div key={title} className="glass-card p-6 text-left space-y-3">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-${color}-500/10`}>
+                                        <Icon className={`w-5 h-5 text-${color}-400`} />
+                                    </div>
+                                    <h3 className="font-black text-white text-sm tracking-tight">{title}</h3>
+                                    <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="relative z-10 text-center py-6 text-xs text-slate-600">
+                        © {new Date().getFullYear()} Tafiti AI · tafitiai.co.ke
+                    </footer>
                 </div>
             </SignedOut>
 
@@ -631,14 +685,18 @@ const App = () => {
                     notifications={notifications}
                     onMarkRead={markNotificationRead}
                     navItems={[
-                        { icon: Rocket, label: 'Home', id: 'feed' },
-                        { icon: MessageSquare, label: 'Research Chat', id: 'chat' },
-                        { icon: Compass, label: 'Discover', id: 'discover' },
-                        { icon: Bookmark, label: 'My Library', id: 'library' },
-                        { icon: FlaskConical, label: 'Gap Analysis', id: 'gap-analysis' },
-                        { icon: Users, label: 'Collaboration', id: 'collaboration' },
-                        { icon: FileText, label: 'Research Notes', id: 'notes' },
-                        { icon: CreditCard, label: 'Billing & Plans', id: 'billing' },
+                        { icon: Rocket, label: 'Home', id: 'feed', group: 'Research' },
+                        { icon: MessageSquare, label: 'Research Chat', id: 'chat', group: 'Research' },
+                        { icon: Compass, label: 'Discover', id: 'discover', group: 'Research' },
+                        { icon: Bookmark, label: 'My Library', id: 'library', group: 'Research' },
+                        { icon: FlaskConical, label: 'Gap Analysis', id: 'gap-analysis', group: 'Research' },
+                        { icon: FileText, label: 'Notes', id: 'notes', group: 'Research' },
+                        { icon: History, label: 'History', id: 'history', group: 'Research' },
+                        { icon: Users, label: 'Collaboration', id: 'collaboration', group: 'Community' },
+                        { icon: Trophy, label: 'Bounties', id: 'bounties', group: 'Community' },
+                        { icon: Building2, label: 'Sandboxes', id: 'sandboxes', group: 'Community' },
+                        { icon: Shield, label: 'Anchors', id: 'anchors', group: 'Community' },
+                        { icon: CreditCard, label: 'Billing & Plans', id: 'billing', group: 'Account' },
                     ].map(item => ({
                         ...item,
                         active: activeTab === item.id,
@@ -701,9 +759,20 @@ const App = () => {
                                     <ProfileView
                                         user={mergedUser}
                                         careerField={mergedUser.career_field || 'AI Research'}
+                                        onSearch={(q) => { setActiveTab('feed'); handleSearch(q); }}
+                                        onProfileUpdate={(updated) => {
+                                            setUserProfile(prev => ({ ...prev, ...updated }));
+                                            fetchDiscoverPapers();
+                                        }}
                                     />
                                 ) : activeTab === 'billing' ? (
                                     <BillingView user={mergedUser} />
+                                ) : activeTab === 'bounties' ? (
+                                    <BountiesView />
+                                ) : activeTab === 'sandboxes' ? (
+                                    <SandboxesView />
+                                ) : activeTab === 'anchors' ? (
+                                    <AnchorsView />
                                 ) : activeTab === 'support' ? (
                                     <SupportView />
                                 ) : activeTab === 'discover' ? (
@@ -717,6 +786,11 @@ const App = () => {
                                         isLoadingSimilar={isLoadingSimilar}
                                         onFetchRecommendations={handleFetchRecommendations}
                                         onConnect={handleConnect}
+                                        handleSavePaper={handleSavePaper}
+                                        discoverPapers={discoverPapers}
+                                        isLoadingDiscover={isLoadingDiscover}
+                                        onRefreshDiscover={fetchDiscoverPapers}
+                                        library={library}
                                     />
                                 ) : activeTab === 'collaboration' ? (
                                     <CollaborationView user={mergedUser} />
@@ -806,213 +880,77 @@ const App = () => {
                                             )}
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="space-y-12 animate-reveal">
-                                        <header className="flex items-center justify-between gap-4">
-                                            <div className="min-w-0">
-                                                <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white mb-1 sm:mb-2">
-                                                    {activeTab === 'feed' ? 'Home' : 'Personal Library'}
-                                                </h2>
-                                                <p className="text-sm sm:text-base text-slate-500 font-medium">
-                                                    {activeTab === 'feed' ? 'Explore the latest academic breakthroughs.' : 'Manage your curated research repository.'}
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={() => setShowPreferenceForm(!showPreferenceForm)}
-                                                className={`p-4 rounded-2xl border transition-all duration-500 ${showPreferenceForm ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300' : 'bg-white/5 border-white/5 text-slate-500 hover:text-white hover:border-white/10'}`}
-                                            >
-                                                <Settings2 className="w-6 h-6" />
-                                            </button>
+                                ) : activeTab === 'feed' ? (
+                                    <FeedView
+                                        searchBoxRef={searchBoxRef}
+                                        papers={papers}
+                                        selectedPapers={selectedPapers}
+                                        library={library}
+                                        history={history}
+                                        isLoading={isLoading}
+                                        isHistoryLoading={isHistoryLoading}
+                                        isSynthesizing={isSynthesizing}
+                                        synthesis={synthesis}
+                                        synthesisLanguage={synthesisLanguage}
+                                        outputLanguage={outputLanguage}
+                                        setOutputLanguage={setOutputLanguage}
+                                        lastQuery={lastQuery}
+                                        followupQuestions={followupQuestions}
+                                        paperImpacts={paperImpacts}
+                                        isImpactLoading={isImpactLoading}
+                                        isPremiumBlocked={isPremiumBlocked}
+                                        isStartingTrial={isStartingTrial}
+                                        trialNotStarted={trialNotStarted}
+                                        showPreferenceForm={showPreferenceForm}
+                                        setShowPreferenceForm={setShowPreferenceForm}
+                                        isFetchRecs={isFetchRecs}
+                                        onSearch={handleSearch}
+                                        onSynthesize={handleSynthesize}
+                                        onTogglePaper={togglePaper}
+                                        onSavePaper={handleSavePaper}
+                                        onClipPaper={handleClipPaper}
+                                        onImpact={handleGetPaperImpact}
+                                        onGraph={p => setGraphPaper(p)}
+                                        onClipSynthesis={handleClipSynthesis}
+                                        onFetchRecommendations={handleFetchRecommendations}
+                                        onRestoreHistory={(item) => {
+                                            setSynthesis(item.answer);
+                                            setLastQuery(item.query);
+                                            setPapers(item.papers);
+                                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                                        }}
+                                        onNavigateHistory={() => setActiveTab('history')}
+                                        handleStartTrial={handleStartTrial}
+                                        setActiveTab={setActiveTab}
+                                    />
+                                ) : activeTab === 'library' ? (
+                                    <div className="space-y-8 animate-reveal">
+                                        <header>
+                                            <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white mb-1 sm:mb-2">Personal Library</h2>
+                                            <p className="text-sm sm:text-base text-slate-500 font-medium">Manage your curated research repository.</p>
                                         </header>
-
-                                        <div className="relative z-10 glass-card-heavy p-2 border-indigo-500/10">
-                                            <SearchBox ref={searchBoxRef} onSearch={handleSearch} isLoading={isLoading} />
-                                        </div>
-
-                                        {showPreferenceForm && (
-                                            <div className="animate-slide-up bg-indigo-500/5 rounded-3xl p-1 border border-indigo-500/20">
-                                                <PreferenceForm onSave={handleFetchRecommendations} isLoading={isFetchRecs} />
-                                            </div>
-                                        )}
-
-                                        {activeTab === 'feed' ? (
-                                            <div className="space-y-12">
-                                                {/* Feed Results */}
-                                                {papers.length > 0 ? (
-                                                    <div className="space-y-10 animate-reveal">
-                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
-                                                            <div className="flex items-center gap-3 min-w-0">
-                                                                <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 transition-transform hover:scale-110 shrink-0">
-                                                                    <Layers className="w-5 h-5" />
-                                                                </div>
-                                                                <h3 className="text-base sm:text-lg font-black tracking-tight truncate">Results for "{lastQuery}"</h3>
-                                                            </div>
-                                                            <div className="flex items-center gap-3 flex-wrap">
-                                                                {/* Language selector */}
-                                                                <div className="relative flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/30 transition-all group">
-                                                                    <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                                                    <select
-                                                                        value={outputLanguage}
-                                                                        onChange={e => setOutputLanguage(e.target.value)}
-                                                                        className="bg-transparent text-xs font-black text-white uppercase tracking-widest appearance-none outline-none cursor-pointer pr-1"
-                                                                        title="Output language for synthesis"
-                                                                    >
-                                                                        {LANGUAGES.map(lang => (
-                                                                            <option key={lang.value} value={lang.value} className="bg-[#0f1117] text-white normal-case font-normal">
-                                                                                {lang.label}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                                {isPremiumBlocked ? (
-                                                                    <button
-                                                                        onClick={() => trialNotStarted ? handleStartTrial() : setActiveTab('billing')}
-                                                                        disabled={isStartingTrial}
-                                                                        className="py-3 px-6 text-sm flex items-center gap-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-black hover:bg-amber-500/20 transition-all disabled:opacity-60"
-                                                                    >
-                                                                        {isStartingTrial ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                                                                        {trialNotStarted ? 'Start Trial to Synthesize' : 'Upgrade to Synthesize'}
-                                                                    </button>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={handleSynthesize}
-                                                                        disabled={isSynthesizing || selectedPapers.length === 0}
-                                                                        className="btn-primary py-3 px-6 text-sm flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                    >
-                                                                        <Sparkles className={`w-4 h-4 ${isSynthesizing ? 'animate-spin' : ''}`} />
-                                                                        {isSynthesizing ? 'Synthesizing...' : `Synthesize ${selectedPapers.length} Papers`}
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                            {papers.map((paper) => (
-                                                                <PaperCard
-                                                                    key={paper.id}
-                                                                    paper={paper}
-                                                                    onSelect={togglePaper}
-                                                                    isSelected={!!selectedPapers.find(p => p.id === paper.id)}
-                                                                    onSave={handleSavePaper}
-                                                                    isSaved={!!library.find(p => p.id === paper.id)}
-                                                                    onClip={handleClipPaper}
-                                                                    onImpact={() => handleGetPaperImpact(paper.id)}
-                                                                    impact={paperImpacts[paper.id]}
-                                                                    isImpactLoading={isImpactLoading[paper.id]}
-                                                                    onGraph={p => setGraphPaper(p)}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                        <div className="pt-12">
-                                                            <SynthesisView
-                                                                synthesis={synthesis}
-                                                                papers={selectedPapers}
-                                                                isLoading={isSynthesizing}
-                                                                onClip={handleClipSynthesis}
-                                                                language={synthesisLanguage}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="glass-card p-12 sm:p-24 text-center space-y-6 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] transition-colors group cursor-default">
-                                                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white/5 rounded-[2.5rem] mx-auto flex items-center justify-center group-hover:rotate-12 transition-transform duration-700">
-                                                            <Rocket className="text-white/20 w-10 h-10 sm:w-12 sm:h-12" />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <h3 className="text-xl sm:text-2xl font-black text-white/40 tracking-tight">Your feed is ready.</h3>
-                                                            <p className="text-sm text-slate-500 max-w-xs mx-auto font-medium leading-relaxed">Search for a topic or check out the trending research in your field.</p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Recent Research History Section */}
-                                                <div className="pt-12 border-t border-white/5 space-y-8 animate-reveal">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400">
-                                                            <History className="w-5 h-5" />
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="text-xl font-black tracking-tight text-white">Recent Research</h3>
-                                                            <p className="text-sm text-slate-500 font-medium tracking-tight">Access your past academic syntheses.</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 gap-6">
-                                                        {isHistoryLoading ? (
-                                                            <div className="flex items-center justify-center py-12">
-                                                                <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-                                                            </div>
-                                                        ) : history.length > 0 ? (
-                                                            history.slice(0, 5).map((item) => (
-                                                                <div key={item.id} className="glass-card-heavy p-5 sm:p-8 space-y-4 hover:border-indigo-500/30 transition-all cursor-pointer group" onClick={() => {
-                                                                    setSynthesis(item.answer);
-                                                                    setLastQuery(item.query);
-                                                                    setPapers(item.papers);
-                                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                                }}>
-                                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                                                                        <div className="flex items-center gap-3 min-w-0">
-                                                                            <div className="w-8 h-8 bg-indigo-500/10 rounded-lg flex items-center justify-center shrink-0">
-                                                                                <Sparkles className="w-4 h-4 text-indigo-400" />
-                                                                            </div>
-                                                                            <h3 className="font-black text-base sm:text-xl text-white group-hover:text-indigo-400 transition-colors uppercase tracking-tight truncate">{item.title}</h3>
-                                                                        </div>
-                                                                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest shrink-0 ml-11 sm:ml-0">{new Date(item.created_at).toLocaleDateString()}</span>
-                                                                    </div>
-                                                                    <p className="text-slate-500 line-clamp-2 text-sm leading-relaxed">{item.answer}</p>
-                                                                    <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-slate-500 pt-4 border-t border-white/5">
-                                                                        <span>{item.papers.length} Sources</span>
-                                                                        <div className="flex -space-x-2">
-                                                                            {[1, 2, 3].map(i => <div key={i} className="w-6 h-6 rounded-full border border-[var(--bg-main)] bg-indigo-500/20" />)}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))
-                                                        ) : (
-                                                            <div className="text-center py-12 border border-dashed border-white/5 rounded-3xl">
-                                                                <p className="text-slate-500 font-medium">No recent history found.</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {history.length > 5 && (
-                                                        <button
-                                                            onClick={() => setActiveTab('history')}
-                                                            className="w-full py-4 rounded-2xl bg-white/5 border border-white/5 text-slate-500 font-black uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all text-xs flex items-center justify-center gap-2 group"
-                                                        >
-                                                            View Full History
-                                                            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                                                        </button>
-                                                    )}
-                                                </div>
+                                        {library.length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                {library.map((paper) => (
+                                                    <PaperCard
+                                                        key={paper.id}
+                                                        paper={paper}
+                                                        onSelect={togglePaper}
+                                                        isSelected={!!selectedPapers.find(p => p.id === paper.id)}
+                                                        onSave={handleSavePaper}
+                                                        isSaved={true}
+                                                        onGraph={p => setGraphPaper(p)}
+                                                    />
+                                                ))}
                                             </div>
                                         ) : (
-                                            /* Library View */
-                                            <div className="space-y-10 animate-reveal">
-                                                {library.length > 0 ? (
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                        {library.map((paper) => (
-                                                            <PaperCard
-                                                                key={paper.id}
-                                                                paper={paper}
-                                                                onSelect={togglePaper}
-                                                                isSelected={!!selectedPapers.find(p => p.id === paper.id)}
-                                                                onSave={handleSavePaper}
-                                                                isSaved={true}
-                                                                onGraph={p => setGraphPaper(p)}
-                                                            />
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <div className="glass-card p-24 text-center space-y-6 border-dashed border-white/5 bg-white/[0.01]">
-                                                        <h3 className="text-2xl font-black text-white/40 tracking-tight">Your library is empty.</h3>
-                                                        <p className="text-sm text-slate-500 font-medium leading-relaxed">Save papers to build your personal academic repository.</p>
-                                                    </div>
-                                                )}
+                                            <div className="glass-card p-24 text-center space-y-6 border-dashed border-white/5 bg-white/[0.01]">
+                                                <h3 className="text-2xl font-black text-white/40 tracking-tight">Your library is empty.</h3>
+                                                <p className="text-sm text-slate-500 font-medium leading-relaxed">Save papers to build your personal academic repository.</p>
                                             </div>
                                         )}
                                     </div>
-                                )}
+                                ) : null}
                                 </Suspense>
                             </main>
                         </div>

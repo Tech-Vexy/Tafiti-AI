@@ -51,7 +51,7 @@ export const DiscoveryFeed = ({ careerField, onSearch, topics, isLoadingRecs }) 
                                 <h4 className="text-sm font-bold line-clamp-2 group-hover:text-orange-400 transition-colors">
                                     {paper.title}
                                 </h4>
-                                <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)]">
+                                <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
                                     <span>{paper.citations} citations</span>
                                     <span>•</span>
                                     <span>{paper.year}</span>

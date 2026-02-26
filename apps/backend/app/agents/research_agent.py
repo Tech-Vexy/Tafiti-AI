@@ -9,31 +9,44 @@ import re
 
 from app.core.config import settings
 from app.models.schemas import PaperBase
+from app.core.logger import get_logger
+
+logger = get_logger("research_agent")
 
 
 class ResearchAgent:
     def __init__(self, provider: str = None, model: str = None):
         self.provider = provider or settings.DEFAULT_LLM_PROVIDER
         self.model = model or settings.DEFAULT_LLM_MODEL
-        
-        if self.provider == "groq":
-            base_url = "https://api.groq.com/openai/v1"
-            api_key = settings.GROQ_API_KEY
-        elif self.provider == "openai":
-            base_url = None
-            api_key = settings.OPENAI_API_KEY
+
+        if self.provider == "gemini":
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            self.llm = ChatGoogleGenerativeAI(
+                model=self.model or "gemini-1.5-flash",
+                temperature=settings.LLM_TEMPERATURE,
+                max_output_tokens=settings.LLM_MAX_TOKENS,
+                google_api_key=settings.GOOGLE_API_KEY,
+                streaming=True,
+            )
         else:
-            base_url = "http://localhost:11434/v1"
-            api_key = "ollama"
-        
-        self.llm = ChatOpenAI(
-            model_name=self.model,
-            temperature=settings.LLM_TEMPERATURE,
-            max_tokens=settings.LLM_MAX_TOKENS,
-            openai_api_base=base_url,
-            openai_api_key=api_key,
-            streaming=True
-        )
+            if self.provider == "groq":
+                base_url = "https://api.groq.com/openai/v1"
+                api_key = settings.GROQ_API_KEY
+            elif self.provider == "openai":
+                base_url = None
+                api_key = settings.OPENAI_API_KEY
+            else:
+                base_url = "http://localhost:11434/v1"
+                api_key = "ollama"
+
+            self.llm = ChatOpenAI(
+                model_name=self.model,
+                temperature=settings.LLM_TEMPERATURE,
+                max_tokens=settings.LLM_MAX_TOKENS,
+                openai_api_base=base_url,
+                openai_api_key=api_key,
+                streaming=True,
+            )
     
     def _build_context(self, papers: List[PaperBase]) -> str:
         context = ""
@@ -70,18 +83,29 @@ STRICT GUIDELINES:
 
 Your synthesis should demonstrate critical thinking and scholarly rigor."""
 
+    def _build_human_message(self, query: str, context: str, rag_context: str = "") -> str:
+        parts = [f"Context:\n{context}"]
+        if rag_context:
+            parts.append(
+                f"Additional Retrieved Context (from knowledge base):\n{rag_context}"
+            )
+        parts.append(f"\nQuestion: {query}\n\nProvide a comprehensive synthesis:")
+        return "\n\n".join(parts)
+
     async def synthesize_streaming(
         self,
         query: str,
         papers: List[PaperBase],
-        output_language: str = "English"
+        output_language: str = "English",
+        rag_context: str = "",
     ) -> AsyncIterator[str]:
         context = self._build_context(papers)
         system_prompt = self._build_system_prompt(output_language=output_language)
+        human_content = self._build_human_message(query, context, rag_context)
 
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Context:\n{context}\n\nQuestion: {query}\n\nProvide a comprehensive synthesis:")
+            HumanMessage(content=human_content),
         ]
 
         async for chunk in self.llm.astream(messages):
@@ -92,14 +116,16 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         self,
         query: str,
         papers: List[PaperBase],
-        output_language: str = "English"
+        output_language: str = "English",
+        rag_context: str = "",
     ) -> Dict[str, Any]:
         context = self._build_context(papers)
         system_prompt = self._build_system_prompt(output_language=output_language)
+        human_content = self._build_human_message(query, context, rag_context)
 
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Context:\n{context}\n\nQuestion: {query}\n\nProvide a comprehensive synthesis:")
+            HumanMessage(content=human_content),
         ]
 
         response = await self.llm.agenerate([messages])
@@ -138,6 +164,156 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
                 suggestions.append(line.lstrip("0123456789.-) "))
         
         return suggestions[:3]
+
+    async def generate_followup_questions(
+        self,
+        context: str,
+        query: str
+    ) -> List[str]:
+        """Generate 3-5 follow-up research questions after a synthesis."""
+        messages = [
+            SystemMessage(content=(
+                "You are a research advisor. Given the following research context and query, "
+                "generate exactly 4 concise, specific follow-up research questions that would "
+                "deepen understanding of the topic. Return them as a JSON array of strings only, "
+                "no other text. Example: [\"Question 1?\", \"Question 2?\"]"
+            )),
+            HumanMessage(content=f"Query: {query}\n\nContext excerpt:\n{context[:1500]}")
+        ]
+        try:
+            response = await self.llm.agenerate([messages])
+            raw = response.generations[0][0].text.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            questions = json.loads(raw)
+            if isinstance(questions, list):
+                return [str(q) for q in questions[:5]]
+        except Exception as e:
+            logger.warning(f"Follow-up question generation failed: {e}")
+        # Fallback
+        return [
+            f"What methodological improvements could strengthen research on {query}?",
+            f"Which populations or regions are underrepresented in {query} studies?",
+            f"What are the practical applications of recent findings in {query}?",
+        ]
+
+    async def chat_research_streaming(
+        self,
+        query: str,
+        history: List[Dict[str, str]],
+        local_papers: List["PaperBase"],
+        uploaded_context: str = ""
+    ) -> AsyncIterator[str]:
+        """
+        Streaming conversational research assistant.
+        Grounds responses in provided papers and uploaded document context.
+        """
+        system_content = (
+            "You are an expert research assistant with deep scholarly knowledge. "
+            "Answer questions accurately and concisely, citing provided sources with [Source N] "
+            "when evidence is available. If the question goes beyond the provided context, "
+            "clearly indicate that and draw on general academic knowledge. "
+            "Be direct, precise, and academically rigorous."
+        )
+
+        if local_papers:
+            papers_context = self._build_context(local_papers)
+            system_content += f"\n\nAvailable research sources:\n{papers_context}"
+
+        if uploaded_context:
+            system_content += f"\n\nUploaded document content:\n{uploaded_context[:3000]}"
+
+        messages = [SystemMessage(content=system_content)]
+        for msg in history[-8:]:  # Keep last 8 messages for context window efficiency
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                from langchain_core.messages import AIMessage
+                messages.append(AIMessage(content=msg["content"]))
+        messages.append(HumanMessage(content=query))
+
+        async for chunk in self.llm.astream(messages):
+            if chunk.content:
+                yield chunk.content
+
+    async def collaborate_research_streaming(
+        self,
+        query: str,
+        papers: List["PaperBase"]
+    ) -> AsyncIterator[str]:
+        """
+        Multi-perspective collaborative synthesis.
+        Simulates two analytical lenses: critical analysis + constructive synthesis.
+        """
+        context = self._build_context(papers)
+
+        system_prompt = (
+            "You are two expert academic voices collaborating on a research synthesis:\n\n"
+            "**Voice 1 — The Critic**: Rigorously examines limitations, contradictions, "
+            "methodological weaknesses, and unresolved debates across the papers.\n\n"
+            "**Voice 2 — The Synthesist**: Identifies convergent findings, theoretical "
+            "frameworks, practical implications, and promising directions.\n\n"
+            "Structure your response clearly with both perspectives, using [Source N] citations. "
+            "End with a unified 'Collaborative Conclusion' that integrates both views."
+        )
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Research Question: {query}\n\nCorpus:\n{context}\n\nBegin collaborative analysis:")
+        ]
+
+        async for chunk in self.llm.astream(messages):
+            if chunk.content:
+                yield chunk.content
+
+    async def explain_paper_impact(
+        self,
+        paper: "PaperBase",
+        career_field: str
+    ) -> Dict[str, Any]:
+        """
+        Explain why a specific paper matters to a user given their career field.
+        Returns structured impact data with relevance score and key takeaway.
+        """
+        messages = [
+            SystemMessage(content=(
+                "You are a research mentor helping a professional understand the relevance "
+                "of academic papers to their specific career field. "
+                "Return ONLY a valid JSON object with exactly these keys: "
+                "impact_summary (2-3 sentence explanation), "
+                "relevance_score (integer 1-10), "
+                "key_takeaway (one sentence, the single most actionable insight). "
+                "No markdown fences, no extra text."
+            )),
+            HumanMessage(content=(
+                f"Career field: {career_field}\n\n"
+                f"Paper title: {paper.title}\n"
+                f"Authors: {', '.join(paper.authors or [])}\n"
+                f"Year: {paper.year}\n"
+                f"Citations: {paper.citations}\n"
+                f"Abstract: {paper.abstract or 'No abstract available.'}\n\n"
+                f"Explain the impact of this paper for someone in {career_field}:"
+            ))
+        ]
+
+        response = await self.llm.agenerate([messages])
+        raw = response.generations[0][0].text.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+            else:
+                data = {
+                    "impact_summary": f"This paper contributes to research relevant to {career_field}.",
+                    "relevance_score": 5,
+                    "key_takeaway": paper.title,
+                }
+        return data
 
     async def analyze_research_gaps(
         self,

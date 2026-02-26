@@ -1,16 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 from app.db.session import get_db
-from app.models.database import User, UserSettings
+from app.models.database import User, UserSettings, OrcidProfile
 from app.models.schemas import (
-    UserResponse, UserUpdate, 
+    UserResponse, UserUpdate,
     UserSettingsResponse, UserSettingsUpdate
 )
+from app.core.config import settings as app_settings
 from app.core.security import get_current_user
 from app.core.logger import get_logger
+from app.services.orcid_service import (
+    exchange_code_for_token,
+    upsert_orcid_profile,
+    sync_orcid_works,
+)
 import traceback
 
 logger = get_logger("auth_api")
@@ -205,7 +213,90 @@ async def update_user_settings(
     update_data = settings_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(settings, field, value)
-    
+
     await db.commit()
     await db.refresh(settings)
     return settings
+
+
+# ─── ORCID OAuth Endpoints ────────────────────────────────────────────────────
+
+@router.get("/orcid/authorize")
+async def orcid_authorize(current_user: dict = Depends(get_current_user)):
+    """
+    Step 1: Redirect the user to ORCID's OAuth2 authorisation page.
+    The state parameter encodes the Tafiti user_id so we can link the ORCID
+    account back to the correct user in the callback.
+    """
+    if not app_settings.ORCID_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="ORCID integration not configured")
+
+    params = {
+        "client_id": app_settings.ORCID_CLIENT_ID,
+        "response_type": "code",
+        "scope": "/authenticate /read-limited",
+        "redirect_uri": f"{app_settings.FRONTEND_URL}/orcid/callback",
+        "state": current_user["user_id"],
+    }
+    auth_url = f"https://orcid.org/oauth/authorize?{urlencode(params)}"
+    return RedirectResponse(url=auth_url)
+
+
+@router.get("/orcid/callback")
+async def orcid_callback(
+    code: str,
+    state: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Step 2: ORCID redirects here with ?code=...&state=<user_id>.
+    Exchange the code for a token, persist the ORCID profile, and fire a
+    background task to sync the user's publications.
+    """
+    user_id = state  # trusts the state we set in /orcid/authorize
+    token_data = await exchange_code_for_token(code)
+    if not token_data:
+        raise HTTPException(status_code=400, detail="Failed to exchange ORCID authorisation code")
+
+    orcid_id: str = token_data.get("orcid") or token_data.get("sub", "")
+    access_token: str = token_data.get("access_token", "")
+    refresh_token: str = token_data.get("refresh_token", "")
+    expires_in: int = token_data.get("expires_in", 0)
+
+    if not orcid_id:
+        raise HTTPException(status_code=400, detail="ORCID response did not include an ORCID iD")
+
+    await upsert_orcid_profile(
+        db=db,
+        user_id=user_id,
+        orcid_id=orcid_id,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_in or None,
+    )
+
+    # Background sync — non-blocking
+    background_tasks.add_task(sync_orcid_works, db, user_id, orcid_id)
+
+    return RedirectResponse(
+        url=f"{app_settings.FRONTEND_URL}/profile?orcid_linked=true"
+    )
+
+
+@router.post("/orcid/sync")
+async def trigger_orcid_sync(
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger a re-sync of the user's ORCID publications."""
+    result = await db.execute(
+        select(OrcidProfile).where(OrcidProfile.user_id == current_user["user_id"])
+    )
+    orcid_profile = result.scalar_one_or_none()
+    if not orcid_profile:
+        raise HTTPException(status_code=404, detail="No ORCID account linked")
+
+    background_tasks.add_task(sync_orcid_works, db, current_user["user_id"], orcid_profile.orcid_id)
+    return {"status": "sync_started", "orcid_id": orcid_profile.orcid_id}
