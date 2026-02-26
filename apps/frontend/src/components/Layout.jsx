@@ -99,40 +99,59 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                         </button>
                     </div>
 
-                    <nav className="flex-1 space-y-2 overflow-y-auto custom-scrollbar pr-2 -mr-2">
-                        <div className="px-4 mb-6">
-                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Workspace</span>
-                        </div>
-                        {navItems.map((item) => (
-                            <button
-                                key={item.label}
-                                onClick={() => item.onClick && item.onClick(item.id)}
-                                className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all duration-500 group ${item.active ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-lg shadow-indigo-500/5' : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <item.icon className={`w-5 h-5 ${item.active ? 'text-indigo-400' : 'group-hover:scale-110 group-hover:text-indigo-300 transition-all'}`} />
-                                    <span className="font-bold tracking-tight">{item.label}</span>
+                    <nav className="flex-1 overflow-y-auto custom-scrollbar pr-2 -mr-2 space-y-1">
+                        {/* Group nav items by their `group` prop */}
+                        {(() => {
+                            const groups = {};
+                            navItems.forEach(item => {
+                                const g = item.group || 'Research';
+                                if (!groups[g]) groups[g] = [];
+                                groups[g].push(item);
+                            });
+                            return Object.entries(groups).map(([groupName, items]) => (
+                                <div key={groupName}>
+                                    <div className="px-4 pt-5 pb-1.5">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">{groupName}</span>
+                                    </div>
+                                    {items.map((item) => (
+                                        <button
+                                            key={item.label}
+                                            onClick={() => item.onClick && item.onClick(item.id)}
+                                            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group ${item.active
+                                                ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-lg shadow-indigo-500/5'
+                                                : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <item.icon className={`w-4 h-4 shrink-0 ${item.active ? 'text-indigo-400' : 'group-hover:scale-110 group-hover:text-indigo-300 transition-all'}`} />
+                                                <span className="font-semibold tracking-tight text-sm">{item.label}</span>
+                                            </div>
+                                            {item.active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />}
+                                        </button>
+                                    ))}
                                 </div>
-                                {item.active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]" />}
-                            </button>
-                        ))}
+                            ));
+                        })()}
 
-                        <div className="px-4 mt-12 mb-6">
-                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">System</span>
+                        <div>
+                            <div className="px-4 pt-5 pb-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">System</span>
+                            </div>
+                            {secondaryNav.map((item) => (
+                                <button
+                                    key={item.label}
+                                    onClick={() => item.onClick && item.onClick(item.id)}
+                                    className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group ${item.active
+                                        ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-lg shadow-indigo-500/5'
+                                        : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <item.icon className={`w-4 h-4 shrink-0 ${item.active ? 'text-indigo-400' : 'group-hover:scale-110 group-hover:text-emerald-400 transition-all'}`} />
+                                        <span className="font-semibold tracking-tight text-sm">{item.label}</span>
+                                    </div>
+                                    {item.active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />}
+                                </button>
+                            ))}
                         </div>
-                        {secondaryNav.map((item) => (
-                            <button
-                                key={item.label}
-                                onClick={() => item.onClick && item.onClick(item.id)}
-                                className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all duration-500 group ${item.active ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-lg shadow-indigo-500/5' : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <item.icon className={`w-5 h-5 ${item.active ? 'text-indigo-400' : 'group-hover:scale-110 group-hover:text-emerald-400 transition-all'}`} />
-                                    <span className="font-bold tracking-tight">{item.label}</span>
-                                </div>
-                                {item.active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]" />}
-                            </button>
-                        ))}
                     </nav>
 
                     {/* User Section */}
@@ -155,13 +174,13 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                                     <span className="text-sm font-bold text-white uppercase tracking-tight group-hover/user:text-indigo-300 transition-colors line-clamp-1">{user?.username || 'Researcher'}</span>
                                     <div className="flex items-center gap-2">
                                         {isActive ? (
-                                            <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-400/10 px-1.5 py-0.5 rounded">Pro Scholar</span>
+                                            <span className="text-[11px] font-medium text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">Pro</span>
                                         ) : isTrial ? (
-                                            <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-400/10 px-1.5 py-0.5 rounded">
-                                                Trial: {daysLeft}d
+                                            <span className="text-[11px] font-medium text-indigo-400 bg-indigo-400/10 px-1.5 py-0.5 rounded">
+                                                Trial · {daysLeft}d left
                                             </span>
                                         ) : (
-                                            <span className="text-[9px] font-black text-red-400 uppercase tracking-widest bg-red-400/10 px-1.5 py-0.5 rounded">Expired</span>
+                                            <span className="text-[11px] font-medium text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded">Expired</span>
                                         )}
                                     </div>
                                 </div>
@@ -181,7 +200,7 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                             <Menu className="text-white w-6 h-6" />
                         </button>
                         <div className="hidden lg:block">
-                            <h1 className="text-sm font-black text-slate-500 uppercase tracking-[0.3em]">Scholar Workspace</h1>
+                            <h1 className="text-sm font-semibold text-slate-500">Tafiti AI</h1>
                         </div>
                     </div>
 
@@ -194,7 +213,7 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                             >
                                 <Bell className="w-5 h-5" />
                                 {unreadNotifications > 0 && (
-                                    <span className="absolute top-2 right-2 w-4 h-4 bg-indigo-500 border-2 border-[var(--bg-main)] rounded-full text-[8px] font-black flex items-center justify-center text-white">
+                                    <span className="absolute top-2 right-2 w-4 h-4 bg-indigo-500 border-2 border-[var(--bg-main)] rounded-full text-[10px] font-bold flex items-center justify-center text-white">
                                         {unreadNotifications}
                                     </span>
                                 )}
@@ -203,8 +222,8 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                             {isNotifOpen && (
                                 <div className="absolute right-0 mt-4 w-[calc(100vw-2rem)] sm:w-80 max-w-sm glass-card-heavy border-white/10 shadow-2xl z-50 p-2 overflow-hidden animate-slide-up">
                                     <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                                        <h3 className="text-xs font-black uppercase tracking-widest text-white">Scholar Alerts</h3>
-                                        <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-bold">{unreadNotifications} New</span>
+                                        <h3 className="text-xs font-semibold text-white">Notifications</h3>
+                                        <span className="text-[11px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-medium">{unreadNotifications} New</span>
                                     </div>
                                     <div className="max-h-96 overflow-y-auto custom-scrollbar">
                                         {notifications.length > 0 ? (
@@ -235,7 +254,7 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                                             ))
                                         ) : (
                                             <div className="p-8 text-center">
-                                                <p className="text-xs text-slate-500 font-medium">All quiet in the lab.</p>
+                                                <p className="text-xs text-slate-500">No new notifications.</p>
                                             </div>
                                         )}
                                     </div>
@@ -255,22 +274,24 @@ const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSeco
                 </div>
             </main>
 
-            {/* Mobile Bottom Navigation */}
-            <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-[var(--bg-sidebar)]/90 backdrop-blur-xl border-t border-white/5">
-                <div className="flex items-center justify-around px-2 py-2">
-                    {navItems.slice(0, 5).map((item) => (
+            {/* Mobile Bottom Navigation — show first 4 Research items + More */}
+            <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-[var(--bg-sidebar)]/95 backdrop-blur-xl border-t border-white/5">
+                <div className="flex items-center justify-around px-1 py-1.5 pb-safe">
+                    {navItems.filter(i => ['feed','chat','discover','library'].includes(i.id)).map((item) => (
                         <button
                             key={item.label}
                             onClick={() => item.onClick && item.onClick(item.id)}
-                            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all ${item.active ? 'text-indigo-400' : 'text-slate-500'}`}
+                            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all min-w-0 ${item.active ? 'text-indigo-400' : 'text-slate-500'}`}
                         >
-                            <item.icon className="w-5 h-5" />
-                            <span className="text-[10px] font-bold tracking-tight">{item.label}</span>
+                            <item.icon className="w-5 h-5 shrink-0" />
+                            <span className="text-[10px] font-semibold truncate max-w-[60px]">{item.label}</span>
                         </button>
                     ))}
                     <button
                         onClick={() => setIsSidebarOpen(true)}
-                        className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all text-slate-500"
+                        className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all text-slate-500 ${
+                            navItems.filter(i => !['feed','chat','discover','library'].includes(i.id)).some(i => i.active) ? 'text-indigo-400' : ''
+                        }`}
                     >
                         <Menu className="w-5 h-5" />
                         <span className="text-[10px] font-bold tracking-tight">More</span>

@@ -128,6 +128,20 @@
     animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.5s ease forwards;
+}
+
+/* Mobile safe area bottom padding */
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+}
+
 @media print {
     .no-print {
         display: none !important;

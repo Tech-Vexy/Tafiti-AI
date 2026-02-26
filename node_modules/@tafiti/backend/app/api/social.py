@@ -86,8 +86,107 @@ async def get_unread_count(
     db: AsyncSession = Depends(get_db)
 ):
     stmt = select(func.count(Notification.id)).where(
-        (Notification.user_id == current_user["user_id"]) & 
+        (Notification.user_id == current_user["user_id"]) &
         (Notification.is_read == False)
     )
     count = await db.scalar(stmt)
     return {"count": count or 0}
+
+
+@router.put("/notifications/read-all")
+async def mark_all_notifications_read(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark all notifications as read."""
+    stmt = update(Notification).where(
+        (Notification.user_id == current_user["user_id"]) &
+        (Notification.is_read == False)
+    ).values(is_read=True)
+    await db.execute(stmt)
+    await db.commit()
+    return {"status": "success"}
+
+
+@router.delete("/connect/{target_user_id}")
+async def unfollow_user(
+    target_user_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Unfollow / disconnect from a user."""
+    stmt = select(Connection).where(
+        (Connection.follower_id == current_user["user_id"]) &
+        (Connection.followed_id == target_user_id)
+    )
+    result = await db.execute(stmt)
+    connection = result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    await db.delete(connection)
+    await db.commit()
+    return {"status": "unfollowed"}
+
+
+@router.get("/followers", response_model=List[ConnectionResponse])
+async def list_followers(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List users who follow the current user."""
+    stmt = select(Connection).where(Connection.followed_id == current_user["user_id"])
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.get("/following", response_model=List[ConnectionResponse])
+async def list_following(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List users the current user follows."""
+    stmt = select(Connection).where(Connection.follower_id == current_user["user_id"])
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.put("/connect/{connection_id}/accept")
+async def accept_connection(
+    connection_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Accept a pending connection request."""
+    result = await db.execute(
+        select(Connection).where(
+            Connection.id == connection_id,
+            Connection.followed_id == current_user["user_id"],
+        )
+    )
+    connection = result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection request not found")
+    connection.status = "accepted"
+    await db.commit()
+    return {"status": "accepted"}
+
+
+@router.delete("/connect/{connection_id}/reject")
+async def reject_connection(
+    connection_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Reject / delete a pending connection request."""
+    result = await db.execute(
+        select(Connection).where(
+            Connection.id == connection_id,
+            Connection.followed_id == current_user["user_id"],
+        )
+    )
+    connection = result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection request not found")
+    await db.delete(connection)
+    await db.commit()
+    return {"status": "rejected"}

@@ -2,21 +2,74 @@ import httpx
 import logging
 import time
 import traceback
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    _slowapi_available = True
+except ImportError:
+    _slowapi_available = False
 
 from app.core.config import settings
 from app.core.logger import setup_logging, get_logger
 from app.db.session import init_db
-from app.api import auth, research, queries, recommendation, notes, uploads, billing, social, collaboration, feedback
+from app.api import (
+    auth, research, queries, recommendation, notes,
+    uploads, billing, social, collaboration, feedback, export,
+)
+from app.api import ghost_profiles, bounties, sandboxes, anchors
 from app.core.cache import cache
+from app.db.session import AsyncSessionLocal
+from app.models.database import User
+from sqlalchemy import select, update
 
 # Initialize logging
 setup_logging()
 logger = get_logger("main")
+
+# Rate limiter — gracefully degraded if slowapi not installed
+if _slowapi_available:
+    limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+else:
+    limiter = None
+
+
+async def _expire_subscriptions():
+    """Background loop: mark expired subscriptions every hour."""
+    from datetime import datetime
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                now = datetime.utcnow()
+                await db.execute(
+                    update(User)
+                    .where(
+                        User.subscription_status == "active",
+                        User.subscription_ends_at != None,
+                        User.subscription_ends_at < now,
+                    )
+                    .values(subscription_status="expired")
+                )
+                await db.execute(
+                    update(User)
+                    .where(
+                        User.subscription_status == "trialing",
+                        User.trial_ends_at != None,
+                        User.trial_ends_at < now,
+                    )
+                    .values(subscription_status="expired")
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Subscription expiry job failed: {e}")
+        await asyncio.sleep(3600)  # run every hour
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,7 +93,17 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Shared HTTP client initialized.")
 
+    # Start subscription expiry background task
+    expiry_task = asyncio.create_task(_expire_subscriptions())
+    logger.info("Subscription expiry background job started.")
+
     yield
+
+    expiry_task.cancel()
+    try:
+        await expiry_task
+    except asyncio.CancelledError:
+        pass
 
     # Shutdown
     logger.info("Shutting down application services...")
@@ -56,6 +119,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Rate limiting via slowapi
+if _slowapi_available and limiter:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # GZip compression — compresses JSON/text responses ≥ 1 KB by ~60-80%
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -145,6 +213,11 @@ app.include_router(billing.router, prefix=f"{settings.API_V1_PREFIX}/billing", t
 app.include_router(social.router, prefix=f"{settings.API_V1_PREFIX}/social", tags=["Social Networking"])
 app.include_router(collaboration.router, prefix=f"{settings.API_V1_PREFIX}/collaboration", tags=["Collaboration"])
 app.include_router(feedback.router, prefix=f"{settings.API_V1_PREFIX}/feedback", tags=["Feedback"])
+app.include_router(ghost_profiles.router, prefix=f"{settings.API_V1_PREFIX}/ghost-profiles", tags=["Ghost Profiles"])
+app.include_router(bounties.router, prefix=f"{settings.API_V1_PREFIX}/bounties", tags=["Micro-Bounties"])
+app.include_router(sandboxes.router, prefix=f"{settings.API_V1_PREFIX}/sandboxes", tags=["Institutional Sandboxes"])
+app.include_router(anchors.router, prefix=f"{settings.API_V1_PREFIX}/anchors", tags=["Cryptographic Anchoring"])
+app.include_router(export.router, prefix=f"{settings.API_V1_PREFIX}/export", tags=["PDF Export"])
 
 
 @app.get("/")

@@ -10,12 +10,15 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 
-# LLM & Agent Framework
+# LLM & Agent Frameworks
 langchain
 langchain-core
 langchain-openai
 langchain-community
+langchain-google-genai
 openai
+groq
+pydantic-ai-slim[openai,groq,google]
 
 # Vector Database
 qdrant-client
@@ -30,11 +33,15 @@ python-dotenv
 redis
 celery
 pypdf
+pymupdf          # PDF image extraction for multimodal
 python-json-logger
+aiosmtplib       # async email for ghost profile invites
+jinja2           # email templating
+slowapi          # rate limiting middleware
+weasyprint       # PDF export from HTML/CSS
 
 # Development
 pytest
 pytest-asyncio
 black
 ruff
-

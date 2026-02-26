@@ -175,6 +175,86 @@ class VectorStore:
             logger.error(f"Failed to update query {query_id} in vector store: {str(e)}")
             return False
     
+    def index_papers(self, papers: List[Any], collection_name: str = None) -> int:
+        """
+        Embed and upsert a list of PaperBase objects into Qdrant.
+        Returns the number of successfully indexed papers.
+        Uses the paper's abstract + title as the embedding text.
+        Idempotent — uses paper.id as the point ID prefix so re-indexing is safe.
+        """
+        self._ensure_initialized()
+        target = collection_name or self.collection_name
+        indexed = 0
+        points = []
+        for paper in papers:
+            try:
+                text = f"{paper.title}\n\n{paper.abstract or ''}"
+                embedding = self.embedding_model.encode(text).tolist()
+                authors = paper.authors if paper.authors else []
+                point = PointStruct(
+                    id=str(uuid.uuid5(uuid.NAMESPACE_URL, paper.id)),
+                    vector=embedding,
+                    payload={
+                        "paper_id": paper.id,
+                        "title": paper.title,
+                        "abstract": paper.abstract or "",
+                        "authors": authors,
+                        "year": paper.year,
+                        "citations": paper.citations,
+                        "source": "rag_index",
+                    },
+                )
+                points.append(point)
+                indexed += 1
+            except Exception as e:
+                logger.warning(f"Failed to embed paper {getattr(paper, 'id', '?')}: {e}")
+        if points:
+            try:
+                self.client.upsert(collection_name=target, points=points)
+                logger.info(f"Indexed {len(points)} papers into '{target}'")
+            except Exception as e:
+                logger.error(f"Qdrant upsert failed: {e}")
+                return 0
+        return indexed
+
+    def retrieve_rag_context(
+        self,
+        query: str,
+        k: int = 5,
+        collection_name: str = None,
+        score_threshold: float = 0.3,
+    ) -> str:
+        """
+        Retrieve top-k most relevant paper chunks for a query and return
+        them as a formatted context string ready to prepend to synthesis.
+        """
+        self._ensure_initialized()
+        target = collection_name or self.collection_name
+        try:
+            embedding = self.embedding_model.encode(query).tolist()
+            results = self.client.search(
+                collection_name=target,
+                query_vector=embedding,
+                limit=k,
+                score_threshold=score_threshold,
+            )
+            if not results:
+                return ""
+            context_parts = []
+            for i, hit in enumerate(results, 1):
+                p = hit.payload
+                authors = ", ".join(p.get("authors", [])[:3]) or "Unknown"
+                context_parts.append(
+                    f"[RAG-{i}] {p.get('title', 'Untitled')} "
+                    f"({p.get('year', '?')}) — {authors}\n"
+                    f"{p.get('abstract', '')[:800]}"
+                )
+            logger.info(f"RAG retrieved {len(results)} chunks for query '{query[:60]}'")
+            return "\n\n".join(context_parts)
+        except Exception as e:
+            logger.warning(f"RAG retrieval failed: {e}")
+            return ""
+
     def get_collection_stats(self) -> Dict[str, Any]:
         try:
             info = self.client.get_collection(self.collection_name)
