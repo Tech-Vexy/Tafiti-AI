@@ -26,6 +26,11 @@ from app.services.openalex_service import (
     get_africarxiv_service,
 )
 from app.agents.research_agent import get_research_agent
+from app.models.schemas import DeepResearchRequest, DeepResearchResponse, DeepResearchStatusResponse
+from app.agents.deep_research_agent import get_deep_research_agent
+from app.models.schemas import DeepResearchValidationResponse
+from app.agents.validation_agent import get_validation_agent
+
 from app.agents.critic_agent import validated_synthesis, ValidatedSynthesis
 from app.services.vector_service import vector_store
 from app.core.security import get_current_user
@@ -37,7 +42,6 @@ from app.core.logger import get_logger
 
 logger = get_logger("research_api")
 router = APIRouter()
-
 
 @router.post("/search", response_model=PaperSearchResponse)
 async def search_papers(
@@ -136,7 +140,6 @@ async def search_papers(
         from_cache=False
     )
 
-
 @router.post("/synthesize", response_model=SynthesisResponse)
 async def synthesize(
     request: Request,
@@ -201,7 +204,6 @@ async def synthesize(
         followup_questions=followup
     )
 
-
 @router.post("/synthesize/validated")
 async def synthesize_validated(
     request: Request,
@@ -234,7 +236,6 @@ async def synthesize_validated(
         "processing_time": processing_time,
         "sources_used": list(range(1, len(synth_request.papers) + 1)),
     }
-
 
 @router.post("/synthesize/stream")
 async def synthesize_streaming(
@@ -293,7 +294,6 @@ async def synthesize_streaming(
         generate(),
         media_type="text/event-stream"
     )
-
 
 @router.post("/synthesize/collaborative")
 async def collaborate_synthesis(
@@ -355,7 +355,6 @@ async def collaborate_synthesis(
         media_type="text/event-stream"
     )
 
-
 @router.get("/papers/{paper_id}")
 async def get_paper_details(
     paper_id: str,
@@ -370,7 +369,6 @@ async def get_paper_details(
     
     return paper
 
-
 @router.get("/papers/{paper_id}/related", response_model=List[PaperBase])
 async def get_related_papers(
     paper_id: str,
@@ -381,7 +379,6 @@ async def get_related_papers(
     openalex = get_openalex_service(client=request.app.state.http_client)
     papers = await openalex.get_related_papers(paper_id, limit=limit)
     return papers
-
 
 @router.get("/papers/{paper_id}/citation-graph", response_model=CitationGraphResponse)
 async def get_citation_graph(
@@ -545,7 +542,6 @@ async def run_gap_analysis(
         processing_time=processing_time,
     )
 
-
 @router.get("/history", response_model=List[SearchHistoryResponse])
 async def get_search_history(
     current_user: dict = Depends(get_current_user),
@@ -561,9 +557,6 @@ async def get_search_history(
     )
     return result.scalars().all()
 
-from app.models.schemas import DeepResearchRequest, DeepResearchResponse, DeepResearchStatusResponse
-from app.agents.deep_research_agent import get_deep_research_agent
-
 @router.post("/deep-research", response_model=DeepResearchResponse)
 async def start_deep_research(
     request: Request,
@@ -577,7 +570,10 @@ async def start_deep_research(
     """
     try:
         agent = get_deep_research_agent()
-        interaction_id = await agent.start_research(dr_request.query)
+        interaction_id = await agent.start_research(
+            query=dr_request.query,
+            mcp_servers=dr_request.mcp_servers
+        )
         return DeepResearchResponse(
             interaction_id=interaction_id,
             message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
@@ -585,7 +581,6 @@ async def start_deep_research(
     except Exception as e:
         logger.error(f"Error starting deep research: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/deep-research/{interaction_id}", response_model=DeepResearchStatusResponse)
 async def get_deep_research_status(
@@ -608,10 +603,6 @@ async def get_deep_research_status(
     except Exception as e:
         logger.error(f"Error polling deep research status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-from app.models.schemas import DeepResearchValidationResponse
-from app.agents.validation_agent import get_validation_agent
 
 @router.post("/deep-research/{interaction_id}/validate", response_model=DeepResearchValidationResponse)
 async def validate_deep_research(
