@@ -337,3 +337,17 @@ class GapAnalysisResponse(BaseModel):
     summary: str
     papers_analyzed: int
     processing_time: float
+
+# Deep Research Schemas
+class DeepResearchRequest(BaseModel):
+    query: str
+
+class DeepResearchResponse(BaseModel):
+    interaction_id: str
+    message: str
+
+class DeepResearchStatusResponse(BaseModel):
+    interaction_id: str
+    status: str
+    output: Optional[str] = None
+    error: Optional[str] = None
