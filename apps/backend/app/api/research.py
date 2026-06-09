@@ -608,3 +608,44 @@ async def get_deep_research_status(
     except Exception as e:
         logger.error(f"Error polling deep research status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+from app.models.schemas import DeepResearchValidationResponse
+from app.agents.validation_agent import get_validation_agent
+
+@router.post("/deep-research/{interaction_id}/validate", response_model=DeepResearchValidationResponse)
+async def validate_deep_research(
+    interaction_id: str,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+):
+    """
+    Validate the output of a completed deep research task.
+    Extracts claims, checks citations, and returns a confidence score.
+    """
+    try:
+        # First get the research output
+        dr_agent = get_deep_research_agent()
+        status_info = await dr_agent.get_research_status(interaction_id)
+
+        if status_info["status"] != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot validate incomplete research task. Current status: {status_info['status']}"
+            )
+
+        research_text = status_info.get("output", "")
+        if not research_text:
+             raise HTTPException(status_code=400, detail="Research task completed but output is empty.")
+
+        # Run validation
+        validation_agent = get_validation_agent()
+        validation_result = await validation_agent.validate_research_output(interaction_id, research_text)
+
+        return validation_result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating deep research: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

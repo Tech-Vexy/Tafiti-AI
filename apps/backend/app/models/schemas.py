@@ -351,3 +351,15 @@ class DeepResearchStatusResponse(BaseModel):
     status: str
     output: Optional[str] = None
     error: Optional[str] = None
+
+class CitationValidation(BaseModel):
+    claim: str
+    citation: str
+    is_valid: bool
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    explanation: Optional[str] = None
+
+class DeepResearchValidationResponse(BaseModel):
+    interaction_id: str
+    overall_confidence: float = Field(ge=0.0, le=1.0)
+    validations: List[CitationValidation]
