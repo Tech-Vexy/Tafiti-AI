@@ -341,6 +341,7 @@ class GapAnalysisResponse(BaseModel):
 # Deep Research Schemas
 class DeepResearchRequest(BaseModel):
     query: str
+    mcp_servers: Optional[List[str]] = None  # e.g., ["http://localhost:8000/mcp"]
 
 class DeepResearchResponse(BaseModel):
     interaction_id: str
