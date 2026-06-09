@@ -560,3 +560,51 @@ async def get_search_history(
         .limit(limit)
     )
     return result.scalars().all()
+
+from app.models.schemas import DeepResearchRequest, DeepResearchResponse, DeepResearchStatusResponse
+from app.agents.deep_research_agent import get_deep_research_agent
+
+@router.post("/deep-research", response_model=DeepResearchResponse)
+async def start_deep_research(
+    request: Request,
+    dr_request: DeepResearchRequest,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+):
+    """
+    Start a deep research task using Gemini interactions API.
+    Returns an interaction ID that can be polled for status.
+    """
+    try:
+        agent = get_deep_research_agent()
+        interaction_id = await agent.start_research(dr_request.query)
+        return DeepResearchResponse(
+            interaction_id=interaction_id,
+            message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
+        )
+    except Exception as e:
+        logger.error(f"Error starting deep research: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/deep-research/{interaction_id}", response_model=DeepResearchStatusResponse)
+async def get_deep_research_status(
+    interaction_id: str,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+):
+    """
+    Poll the status of a deep research task.
+    """
+    try:
+        agent = get_deep_research_agent()
+        status_info = await agent.get_research_status(interaction_id)
+        return DeepResearchStatusResponse(
+            interaction_id=interaction_id,
+            status=status_info["status"],
+            output=status_info.get("output"),
+            error=status_info.get("error")
+        )
+    except Exception as e:
+        logger.error(f"Error polling deep research status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
