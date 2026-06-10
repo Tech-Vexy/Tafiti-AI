@@ -557,23 +557,60 @@ async def get_search_history(
     )
     return result.scalars().all()
 
+from sqlalchemy.future import select
+from app.models.database import DeepResearchSession
+import hashlib
+from app.core.cache import cache
+
 @router.post("/deep-research", response_model=DeepResearchResponse)
 async def start_deep_research(
     request: Request,
     dr_request: DeepResearchRequest,
     current_user: dict = Depends(get_current_user),
     _trial: dict = Depends(require_trial_or_active),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Start a deep research task using Gemini interactions API.
     Returns an interaction ID that can be polled for status.
     """
     try:
+        query_hash = hashlib.md5(dr_request.query.encode()).hexdigest()
+        cache_key = f"deep_research:{query_hash}"
+        cached_output = await cache.get(cache_key)
+
+        if cached_output:
+            # Create a DB session marked as completed directly
+            new_session = DeepResearchSession(
+                user_id=current_user["id"],
+                query=dr_request.query,
+                interaction_id="cached_" + query_hash,
+                status="completed",
+                output=cached_output
+            )
+            db.add(new_session)
+            await db.commit()
+            return DeepResearchResponse(
+                interaction_id=new_session.interaction_id,
+                message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
+            )
+
         agent = get_deep_research_agent()
         interaction_id = await agent.start_research(
             query=dr_request.query,
             mcp_servers=dr_request.mcp_servers
         )
+
+        # Save to DB
+        new_session = DeepResearchSession(
+            user_id=current_user["id"],
+            query=dr_request.query,
+            interaction_id=interaction_id,
+            status="pending"
+        )
+        db.add(new_session)
+        await db.commit()
+
         return DeepResearchResponse(
             interaction_id=interaction_id,
             message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
@@ -587,13 +624,47 @@ async def get_deep_research_status(
     interaction_id: str,
     current_user: dict = Depends(get_current_user),
     _trial: dict = Depends(require_trial_or_active),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Poll the status of a deep research task.
     """
     try:
+        if interaction_id.startswith("cached_"):
+            # Fetch directly from DB
+            stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+            result = await db.execute(stmt)
+            db_session = result.scalars().first()
+            if not db_session:
+                 raise HTTPException(status_code=404, detail="Interaction not found")
+            return DeepResearchStatusResponse(
+                interaction_id=interaction_id,
+                status=db_session.status,
+                output=db_session.output,
+                error=db_session.error
+            )
+
         agent = get_deep_research_agent()
         status_info = await agent.get_research_status(interaction_id)
+
+        # Update DB if found
+        stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+        result = await db.execute(stmt)
+        db_session = result.scalars().first()
+
+        if db_session:
+            if status_info["status"] != db_session.status:
+                db_session.status = status_info["status"]
+                if status_info.get("output"):
+                    db_session.output = status_info["output"]
+                    # Cache to Redis
+                    query_hash = hashlib.md5(db_session.query.encode()).hexdigest()
+                    cache_key = f"deep_research:{query_hash}"
+                    await cache.set(cache_key, db_session.output, ttl=86400)
+                if status_info.get("error"):
+                    db_session.error = status_info["error"]
+                await db.commit()
+
         return DeepResearchStatusResponse(
             interaction_id=interaction_id,
             status=status_info["status"],
@@ -609,6 +680,7 @@ async def validate_deep_research(
     interaction_id: str,
     current_user: dict = Depends(get_current_user),
     _trial: dict = Depends(require_trial_or_active),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Validate the output of a completed deep research task.
@@ -616,16 +688,24 @@ async def validate_deep_research(
     """
     try:
         # First get the research output
-        dr_agent = get_deep_research_agent()
-        status_info = await dr_agent.get_research_status(interaction_id)
+        if interaction_id.startswith("cached_"):
+            stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+            result = await db.execute(stmt)
+            db_session = result.scalars().first()
+            if not db_session or db_session.status != "completed":
+                raise HTTPException(status_code=400, detail="Cannot validate incomplete cached research task.")
+            research_text = db_session.output
+        else:
+            dr_agent = get_deep_research_agent()
+            status_info = await dr_agent.get_research_status(interaction_id)
 
-        if status_info["status"] != "completed":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot validate incomplete research task. Current status: {status_info['status']}"
-            )
+            if status_info["status"] != "completed":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot validate incomplete research task. Current status: {status_info['status']}"
+                )
 
-        research_text = status_info.get("output", "")
+            research_text = status_info.get("output", "")
         if not research_text:
              raise HTTPException(status_code=400, detail="Research task completed but output is empty.")
 
