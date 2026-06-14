@@ -72,32 +72,31 @@ async def get_current_user_info(
         # Calculate real-time metrics
         try:
             from sqlalchemy import func
-            from app.models.database import SavedPaper, Note, SavedQuery
+            from app.models.database import SavedPaper, Note, SavedQuery, Notification
             
-            # Citations and Publications count
-            papers_result = await db.execute(
-                select(func.count(SavedPaper.id), func.sum(SavedPaper.citations))
-                .where(SavedPaper.user_id == user.id)
+            # ⚡ Bolt Optimization: Batching sequential metric queries into a single database call using scalar_subquery().
+            # Expected Impact: Reduces database roundtrips from 4 to 1, significantly improving the response time of the /me endpoint.
+            stmt = select(
+                select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery().label("publications_count"),
+                select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery().label("total_citations"),
+                select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery().label("queries_count"),
+                select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery().label("notes_count"),
+                select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery().label("unread_count")
             )
-            row = papers_result.fetchone()
-            publications_count = row[0] if row and row[0] is not None else 0
-            total_citations = row[1] if row and row[1] is not None else 0
             
-            # Interest score
-            queries_count = await db.scalar(select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id))
-            notes_count = await db.scalar(select(func.count(Note.id)).where(Note.user_id == user.id))
+            result = await db.execute(stmt)
+            row = result.fetchone()
             
-            # Unread notifications
-            from app.models.database import Notification
-            unread_count = await db.scalar(
-                select(func.count(Notification.id))
-                .where(Notification.user_id == user.id, Notification.is_read == False)
-            )
+            publications_count = row.publications_count if row and row.publications_count is not None else 0
+            total_citations = row.total_citations if row and row.total_citations is not None else 0
+            queries_count = row.queries_count or 0
+            notes_count = row.notes_count or 0
+            unread_count = row.unread_count or 0
             
             user.citation_count = int(total_citations)
             user.publications_count = int(publications_count)
-            user.interest_score = (queries_count or 0) + (notes_count or 0)
-            user.notification_count = unread_count or 0
+            user.interest_score = queries_count + notes_count
+            user.notification_count = unread_count
         except Exception as metrics_error:
             logger.error(f"Error calculating metrics for user {user.id}: {metrics_error}")
             # Ensure attributes exist even if query fails
