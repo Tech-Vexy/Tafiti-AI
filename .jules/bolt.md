@@ -1,0 +1,3 @@
+## 2026-06-14 - Batching Sequential Queries in SQLAlchemy AsyncSession
+**Learning:** The backend's SQLAlchemy `AsyncSession` implementation does not support concurrent parallel queries on the same connection (e.g., using `asyncio.gather()`). When trying to perform multiple aggregations (like counts and sums) for a single entity, making sequential `await db.scalar(...)` calls introduces unnecessary latency (N+1-like issue).
+**Action:** To optimize sequential queries, batch them using `scalar_subquery()` within a single `select` statement. This reduces network roundtrips to the database from N to 1 while respecting the connection constraints of `AsyncSession`.
