@@ -1,7 +1,11 @@
 from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import JSONB
+import os
+if os.environ.get("TESTING") == "1":
+    JSONB = JSON
+else:
+    from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.db.session import Base
