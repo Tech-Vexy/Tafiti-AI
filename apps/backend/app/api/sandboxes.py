@@ -10,7 +10,7 @@ import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -129,23 +129,29 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
-    result = await db.execute(
-        select(SandboxMember).where(SandboxMember.user_id == current_user["user_id"])
+    # ⚡ Bolt: Optimized N+1 query and memory bloat.
+    # Replaced loop-based queries and `len(result.scalars().all())` with a scalar subquery
+    # and func.count() to compute member counts directly in the database.
+    subq = (
+        select(func.count(SandboxMember.user_id))
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .scalar_subquery()
+        .label("member_count")
     )
-    memberships = result.scalars().all()
+
+    result = await db.execute(
+        select(InstitutionalSandbox, subq)
+        .where(
+            InstitutionalSandbox.id.in_(
+                select(SandboxMember.sandbox_id).where(SandboxMember.user_id == current_user["user_id"])
+            )
+        )
+    )
 
     out = []
-    for m in memberships:
-        sb_result = await db.execute(
-            select(InstitutionalSandbox).where(InstitutionalSandbox.id == m.sandbox_id)
-        )
-        sb = sb_result.scalar_one_or_none()
-        if not sb:
-            continue
-        count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
-        )
-        count = len(count_result.scalars().all())
+    for row in result.all():
+        sb = row.InstitutionalSandbox
+        count = row.member_count
         out.append(SandboxResponse(**sb.__dict__, member_count=count))
     return out
 
@@ -186,10 +192,13 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # ⚡ Bolt: Optimized in-memory counting.
+    # Replaced `len(result.scalars().all())` with an efficient DB-level COUNT.
     count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+        select(func.count(SandboxMember.user_id))
+        .where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
+    count = count_result.scalar()
     return SandboxResponse(**sandbox.__dict__, member_count=count)
 
 
