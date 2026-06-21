@@ -1,0 +1,3 @@
+## 2025-02-20 - [SQLAlchemy Query Performance Optimization]
+**Learning:** Avoid `len(result.scalars().all())` within a loop as it leads to N+1 query overhead in database fetching.
+**Action:** When a count is needed alongside parent data (e.g. counting SandboxMember for each InstitutionalSandbox), formulate the subquery using `func.count(Model.id)` and `.scalar_subquery()`, and remember to `.correlate(ParentModel)` to integrate it into the parent query correctly, returning a single query that calculates the count natively in PostgreSQL. For singular queries, use `.scalar_one()` rather than loading all objects into Python.
