@@ -1,0 +1,3 @@
+## 2024-05-24 - SQLAlchemy N+1 Query & `len()` Anti-pattern
+**Learning:** Found instances where calculating nested record counts resulted in N+1 queries. A loop iterates through initial query results, performing a subquery with `len(result.scalars().all())` which loads all nested objects into memory simply to get a count.
+**Action:** When a loop over an async session runs a query, it must be rewritten. Use `.scalar_subquery()` and `func.count()` in the primary query to do all logic in a single batched query, being careful to properly use `.correlate(Model)` to handle SQLAlchemy subquery resolution. Use `result.scalar_one()` for singular lookups.
