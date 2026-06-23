@@ -1,0 +1,3 @@
+## 2024-06-23 - Optimize N+1 issues and auto-correlation problems in SQLAlchemy count queries
+**Learning:** In loops or single fetch queries, using `len(result.scalars().all())` results in inefficient execution and N+1 query problems. Replacing this with `.scalar_subquery()` incorporating `func.count()`, along with `.correlate()` (using `aliased` if joining the same table), correctly batches the operation into a single database query and prevents SQLAlchemy auto-correlation issues.
+**Action:** Always prefer using `func.count(...)` with `.scalar_subquery()` or `.scalar_one()` for counting database records in SQLAlchemy over fetching all records into application memory to check their length.
