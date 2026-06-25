@@ -8,7 +8,7 @@ Payment is processed via Paystack (KES).
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -230,11 +230,12 @@ async def list_bounties(
     bounties = result.scalars().all()
     out = []
     for b in bounties:
-        sub_count_res = await db.execute(
-            select(BountySubmission).where(BountySubmission.bounty_id == b.id)
+        # ⚡ Bolt Optimization: Calculate count natively in SQL to avoid loading submission records
+        # Expected Impact: Prevents memory OOM for bounties with large numbers of submissions
+        count = await db.scalar(
+            select(func.count()).select_from(BountySubmission).where(BountySubmission.bounty_id == b.id)
         )
-        count = len(sub_count_res.scalars().all())
-        out.append(BountyResponse(**b.__dict__, submission_count=count))
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
     return out
 
 
