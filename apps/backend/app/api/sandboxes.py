@@ -10,7 +10,7 @@ import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -142,11 +142,12 @@ async def list_my_sandboxes(
         sb = sb_result.scalar_one_or_none()
         if not sb:
             continue
-        count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
+        # ⚡ Bolt Optimization: Use SQL COUNT instead of loading all members into Python memory to count them
+        # Expected Impact: Eliminates N+1 query memory bloat for large sandboxes
+        count = await db.scalar(
+            select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
         )
-        count = len(count_result.scalars().all())
-        out.append(SandboxResponse(**sb.__dict__, member_count=count))
+        out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
     return out
 
 
@@ -186,11 +187,12 @@ async def join_sandbox(
     ))
     await db.commit()
 
-    count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+    # ⚡ Bolt Optimization: Calculate count in database to prevent loading all members into memory
+    # Expected Impact: O(1) memory usage instead of O(N) when joining
+    count = await db.scalar(
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
-    return SandboxResponse(**sandbox.__dict__, member_count=count)
+    return SandboxResponse(**sandbox.__dict__, member_count=count or 0)
 
 
 @router.get("/{sandbox_id}/members", response_model=List[MemberResponse])
