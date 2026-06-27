@@ -13,7 +13,7 @@ from app.models.schemas import (
     GapAnalysisRequest, GapAnalysisResponse,
     CitationGraphResponse
 )
-from app.models.schemas_chat import ChatMessage, ChatResearchRequest
+from app.models.schemas_chat import ChatResearchRequest
 from app.services.openalex_service import (
     get_openalex_service,
     get_semantic_scholar_service,
@@ -31,7 +31,6 @@ from app.services.vector_service import vector_store
 from app.core.security import get_current_user
 from app.core.subscription import require_trial_or_active
 from app.models.database import ResearchSession, SearchHistory
-from datetime import datetime
 import time
 from app.core.logger import get_logger
 
