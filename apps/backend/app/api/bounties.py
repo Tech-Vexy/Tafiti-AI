@@ -8,7 +8,7 @@ Payment is processed via Paystack (KES).
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -221,20 +221,26 @@ async def list_bounties(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # ⚡ Bolt: Use scalar_subquery to batch submission counts and prevent N+1 queries.
+    sub_count_query = (
+        select(func.count())
+        .select_from(BountySubmission)
+        .where(BountySubmission.bounty_id == Bounty.id)
+        .correlate(Bounty)
+        .scalar_subquery()
+    )
+
     result = await db.execute(
-        select(Bounty)
+        select(Bounty, sub_count_query.label("submission_count"))
         .where(Bounty.status == status, Bounty.funded == True)  # noqa: E712
         .order_by(desc(Bounty.created_at))
         .limit(limit)
     )
-    bounties = result.scalars().all()
+
     out = []
-    for b in bounties:
-        sub_count_res = await db.execute(
-            select(BountySubmission).where(BountySubmission.bounty_id == b.id)
-        )
-        count = len(sub_count_res.scalars().all())
-        out.append(BountyResponse(**b.__dict__, submission_count=count))
+    for row in result.all():
+        bounty, count = row
+        out.append(BountyResponse(**bounty.__dict__, submission_count=count))
     return out
 
 
