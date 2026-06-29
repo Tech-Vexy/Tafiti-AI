@@ -10,10 +10,9 @@ Flow:
    and auto-creates GhostProfile rows for any unrecognised co-authors.
 """
 
-import hashlib
 import secrets
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
