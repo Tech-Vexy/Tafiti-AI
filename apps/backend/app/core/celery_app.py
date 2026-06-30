@@ -46,7 +46,6 @@ def process_batch_synthesis(queries: list, papers: list, user_id: int):
 @celery_app.task(name="cleanup_old_vectors")
 def cleanup_old_vectors(days: int = 90):
     """Clean up old vector embeddings"""
-    from app.services.vector_service import vector_store
     from datetime import datetime, timedelta
     
     cutoff = datetime.utcnow() - timedelta(days=days)
@@ -57,7 +56,7 @@ def cleanup_old_vectors(days: int = 90):
 @celery_app.task(name="export_user_data")
 def export_user_data(user_id: int, format: str = "json"):
     """Export all user data"""
-    from app.models.database import User, SavedQuery
+    from app.models.database import SavedQuery
     from sqlalchemy import select
     import asyncio
     
