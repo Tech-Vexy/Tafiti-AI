@@ -1,0 +1,3 @@
+## 2025-07-03 - Avoid calculating record counts using `len(result.scalars().all())`
+**Learning:** Found N+1 query patterns `len(count_result.scalars().all())` used across multiple endpoints (`api/sandboxes.py` and `api/bounties.py`). The issue is that fetching all rows and calling `.all()` into memory is very inefficient. In some places it's in a loop causing N+1 queries.
+**Action:** Replace this anti-pattern using `func.count()`, `.scalar_subquery()`, and `.correlate()` to prevent SQLAlchemy auto-correlation issues for loops, or just explicit aggregation using `select(func.count()).select_from(...)` via `.scalar()` for single counts.
