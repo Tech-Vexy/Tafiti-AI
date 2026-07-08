@@ -10,7 +10,7 @@ import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -129,25 +129,23 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
-    result = await db.execute(
-        select(SandboxMember).where(SandboxMember.user_id == current_user["user_id"])
+    # ⚡ Bolt: Optimize N+1 queries by fetching sandboxes and member counts in a single query
+    from sqlalchemy.orm import aliased
+    MemberAlias = aliased(SandboxMember)
+    subq = (
+        select(func.count())
+        .select_from(MemberAlias)
+        .where(MemberAlias.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
+        .scalar_subquery()
     )
-    memberships = result.scalars().all()
-
-    out = []
-    for m in memberships:
-        sb_result = await db.execute(
-            select(InstitutionalSandbox).where(InstitutionalSandbox.id == m.sandbox_id)
-        )
-        sb = sb_result.scalar_one_or_none()
-        if not sb:
-            continue
-        count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
-        )
-        count = len(count_result.scalars().all())
-        out.append(SandboxResponse(**sb.__dict__, member_count=count))
-    return out
+    result = await db.execute(
+        select(InstitutionalSandbox, subq)
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    rows = result.all()
+    return [SandboxResponse(**sb.__dict__, member_count=count or 0) for sb, count in rows]
 
 
 @router.post("/join", response_model=SandboxResponse)
@@ -186,10 +184,11 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # ⚡ Bolt: Optimize single count query using database aggregation instead of fetching all records
     count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
+    count = count_result.scalar() or 0
     return SandboxResponse(**sandbox.__dict__, member_count=count)
 
 
