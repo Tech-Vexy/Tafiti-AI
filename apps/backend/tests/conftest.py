@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from main import app
 from app.db.session import Base, get_db
-from app.core.config import settings
 
 
 # Test database URL
