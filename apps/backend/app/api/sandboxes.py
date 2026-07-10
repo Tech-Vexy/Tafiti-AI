@@ -129,23 +129,27 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
-    result = await db.execute(
-        select(SandboxMember).where(SandboxMember.user_id == current_user["user_id"])
+    from sqlalchemy import func
+    from sqlalchemy.orm import aliased
+    # ⚡ Bolt Optimization: Resolved N+1 query for sandboxes and member counts
+    # Replaced loop with a single query using an inner join and correlated subquery
+    member_alias = aliased(SandboxMember)
+    subq = (
+        select(func.count(member_alias.id))
+        .where(member_alias.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
+        .scalar_subquery()
     )
-    memberships = result.scalars().all()
+
+    result = await db.execute(
+        select(InstitutionalSandbox, subq.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    rows = result.all()
 
     out = []
-    for m in memberships:
-        sb_result = await db.execute(
-            select(InstitutionalSandbox).where(InstitutionalSandbox.id == m.sandbox_id)
-        )
-        sb = sb_result.scalar_one_or_none()
-        if not sb:
-            continue
-        count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
-        )
-        count = len(count_result.scalars().all())
+    for sb, count in rows:
         out.append(SandboxResponse(**sb.__dict__, member_count=count))
     return out
 
@@ -186,10 +190,11 @@ async def join_sandbox(
     ))
     await db.commit()
 
-    count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+    from sqlalchemy import func
+    # ⚡ Bolt Optimization: Replaced fetching all objects just to count them with an aggregate count query
+    count = await db.scalar(
+        select(func.count(SandboxMember.id)).where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
     return SandboxResponse(**sandbox.__dict__, member_count=count)
 
 
