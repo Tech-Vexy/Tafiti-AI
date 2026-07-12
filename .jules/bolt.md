@@ -1,0 +1,5 @@
+## 2024-07-12 - N+1 Queries and memory overhead due to `len(scalars().all())`
+
+**Learning:** A common performance anti-pattern in this codebase is counting records by pulling all instances into memory using `len(result.scalars().all())`. Inside iterative endpoints (like `list_my_sandboxes` and `list_bounties`), this leads to N+1 queries. In addition, fetching full ORM objects just to count them adds unnecessary memory overhead. Note that SQLAlchemy 2.0 async sessions do not support concurrent parallel queries on the same connection, and using `scalar_subquery` on the same table can lead to auto-correlation issues if not handled with `aliased()` and explicit `.correlate()`.
+
+**Action:** Replace `len(scalars().all())` loops with `scalar_subquery` and explicit aggregation using `func.count()`. For loops joining the same table (e.g., `SandboxMember` inside `InstitutionalSandbox` list), always use `aliased` for the subquery table and explicitly use `.correlate(MainModel)` to prevent auto-correlation issues.
