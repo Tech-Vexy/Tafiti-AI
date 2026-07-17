@@ -11,6 +11,7 @@ import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -209,15 +210,18 @@ async def get_members(
     if not check.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Not a member of this sandbox")
 
+    # ⚡ Bolt Optimization: Use joinedload to fetch associated users in a single query,
+    # preventing an N+1 query problem when iterating over members.
     result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox_id)
+        select(SandboxMember)
+        .options(joinedload(SandboxMember.user))
+        .where(SandboxMember.sandbox_id == sandbox_id)
     )
     members = result.scalars().all()
 
     out = []
     for m in members:
-        user_result = await db.execute(select(User).where(User.id == m.user_id))
-        user = user_result.scalar_one_or_none()
+        user = m.user
         out.append(MemberResponse(
             user_id=m.user_id,
             username=user.username if user else None,
