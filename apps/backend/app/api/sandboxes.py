@@ -10,7 +10,7 @@ import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -129,24 +129,24 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
-    result = await db.execute(
-        select(SandboxMember).where(SandboxMember.user_id == current_user["user_id"])
+    # Performance Optimization: Single query replacing 1+2N queries for sandboxes and member counts.
+    subq = (
+        select(func.count())
+        .select_from(SandboxMember)
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
+        .scalar_subquery()
     )
-    memberships = result.scalars().all()
+    result = await db.execute(
+        select(InstitutionalSandbox, subq.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
 
+    rows = result.all()
     out = []
-    for m in memberships:
-        sb_result = await db.execute(
-            select(InstitutionalSandbox).where(InstitutionalSandbox.id == m.sandbox_id)
-        )
-        sb = sb_result.scalar_one_or_none()
-        if not sb:
-            continue
-        count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
-        )
-        count = len(count_result.scalars().all())
-        out.append(SandboxResponse(**sb.__dict__, member_count=count))
+    for sb, count in rows:
+        out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
     return out
 
 
@@ -186,11 +186,13 @@ async def join_sandbox(
     ))
     await db.commit()
 
-    count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+    # Performance Optimization: Calculate count without loading all records into memory
+    count = await db.scalar(
+        select(func.count())
+        .select_from(SandboxMember)
+        .where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
-    return SandboxResponse(**sandbox.__dict__, member_count=count)
+    return SandboxResponse(**sandbox.__dict__, member_count=count or 0)
 
 
 @router.get("/{sandbox_id}/members", response_model=List[MemberResponse])
