@@ -1,0 +1,3 @@
+## 2024-06-25 - Fix N+1 Query Using Correlated Scalar Subquery
+**Learning:** Using a `for` loop to fetch a count for each returned record results in N+1 queries, creating a severe performance bottleneck. In `apps/backend/app/api/bounties.py:list_bounties`, looping over all bounties and querying `BountySubmission` sequentially caused significant database round trips. A scalar subquery with explicit correlation enables calculating the count directly inside the database efficiently.
+**Action:** Always prefer computing counts at the database level when listing records. Use `select(func.count(RelatedModel.id)).where(...).correlate(BaseModel).scalar_subquery()` and label it inside the primary `select(...)`.
