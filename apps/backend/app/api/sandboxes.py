@@ -10,7 +10,7 @@ import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -143,9 +143,9 @@ async def list_my_sandboxes(
         if not sb:
             continue
         count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
+            select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
         )
-        count = len(count_result.scalars().all())
+        count = count_result.scalar()
         out.append(SandboxResponse(**sb.__dict__, member_count=count))
     return out
 
@@ -187,9 +187,9 @@ async def join_sandbox(
     await db.commit()
 
     count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
+    count = count_result.scalar()
     return SandboxResponse(**sandbox.__dict__, member_count=count)
 
 
