@@ -1,0 +1,3 @@
+## 2025-07-21 - Optimize record counts in loops using scalar_subquery
+**Learning:** Found instances of N+1 query performance anti-patterns by calculating `len(result.scalars().all())` within a loop, querying child records for parent records returned sequentially. This causes heavy DB load because it pulls entire model objects from the DB instead of executing a count on DB side, and it does so repetitively.
+**Action:** Replace `len(result.scalars().all())` inside a loop with a count optimized directly via `.scalar_subquery()` or explicitly querying counts, avoiding full row hydration and reducing DB roundtrips.

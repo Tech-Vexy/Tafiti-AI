@@ -73,3 +73,9 @@ def test_paper_data():
         "abstract": "This is a test abstract about machine learning applications.",
         "authors": ["John Doe", "Jane Smith"]
     }
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
+
+@compiles(JSONB, 'sqlite')
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
