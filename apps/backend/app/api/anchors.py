@@ -14,20 +14,19 @@ An optional ANCHOR_WEBHOOK_URL can be set to POST the hash to an external notary
 """
 
 import hashlib
-import httpx
 from datetime import datetime
-from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 
-from app.db.session import get_db
-from app.models.database import DraftAnchor
-from app.core.security import get_current_user
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import DraftAnchor
 
 logger = get_logger("anchors")
 router = APIRouter()
@@ -37,14 +36,14 @@ router = APIRouter()
 
 class AnchorCreate(BaseModel):
     content: str = Field(..., min_length=10, description="The draft text to anchor. Never stored.")
-    label: Optional[str] = Field(None, max_length=200, description="Private label for your reference.")
+    label: str | None = Field(None, max_length=200, description="Private label for your reference.")
 
 
 class AnchorResponse(BaseModel):
     id: str
-    label: Optional[str] = None
+    label: str | None = None
     content_hash: str          # SHA-256 hex digest
-    external_anchor_ref: Optional[str] = None
+    external_anchor_ref: str | None = None
     anchored_at: datetime
 
     class Config:
@@ -59,7 +58,7 @@ class VerifyRequest(BaseModel):
 class VerifyResponse(BaseModel):
     anchor_id: str
     match: bool
-    anchored_at: Optional[datetime] = None
+    anchored_at: datetime | None = None
     message: str
 
 
@@ -69,7 +68,7 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-async def _post_to_notary(content_hash: str, anchor_id: str) -> Optional[str]:
+async def _post_to_notary(content_hash: str, anchor_id: str) -> str | None:
     """
     Optionally POST the hash to an external notary webhook.
     Returns a reference string on success, None otherwise.
@@ -128,7 +127,7 @@ async def create_anchor(
     return anchor
 
 
-@router.get("/", response_model=List[AnchorResponse])
+@router.get("/", response_model=list[AnchorResponse])
 async def list_anchors(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

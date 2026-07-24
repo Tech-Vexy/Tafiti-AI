@@ -8,17 +8,17 @@ Admins generate a short invite code; participants join using it.
 
 import secrets
 import string
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, Field
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logger import get_logger
+from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.database import InstitutionalSandbox, SandboxMember, User
-from app.core.security import get_current_user
-from app.core.logger import get_logger
 
 logger = get_logger("sandboxes")
 router = APIRouter()
@@ -29,24 +29,24 @@ router = APIRouter()
 class SandboxCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=200)
     institution: str = Field(..., min_length=3, max_length=300)
-    description: Optional[str] = None
-    logo_url: Optional[str] = None
+    description: str | None = None
+    logo_url: str | None = None
     is_public: bool = False
-    event_start: Optional[datetime] = None
-    event_end: Optional[datetime] = None
+    event_start: datetime | None = None
+    event_end: datetime | None = None
 
 
 class SandboxResponse(BaseModel):
     id: str
     name: str
     institution: str
-    description: Optional[str] = None
-    logo_url: Optional[str] = None
+    description: str | None = None
+    logo_url: str | None = None
     invite_code: str
     is_public: bool
     admin_user_id: str
-    event_start: Optional[datetime] = None
-    event_end: Optional[datetime] = None
+    event_start: datetime | None = None
+    event_end: datetime | None = None
     created_at: datetime
     member_count: int = 0
 
@@ -56,8 +56,8 @@ class SandboxResponse(BaseModel):
 
 class MemberResponse(BaseModel):
     user_id: str
-    username: Optional[str] = None
-    university: Optional[str] = None
+    username: str | None = None
+    university: str | None = None
     role: str
     joined_at: datetime
 
@@ -123,29 +123,30 @@ async def create_sandbox(
     return SandboxResponse(**sandbox.__dict__, member_count=1)
 
 
-@router.get("/", response_model=List[SandboxResponse])
+@router.get("/", response_model=list[SandboxResponse])
 async def list_my_sandboxes(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
-    result = await db.execute(
-        select(SandboxMember).where(SandboxMember.user_id == current_user["user_id"])
+    from sqlalchemy import func
+    # Optimization: Replaced loop logic creating N+1 queries by using a subquery
+    # and a join to fetch sandboxes and their member counts in one SQL operation.
+    subq = (
+        select(func.count(SandboxMember.id))
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
+        .scalar_subquery()
     )
-    memberships = result.scalars().all()
+    result = await db.execute(
+        select(InstitutionalSandbox, subq)
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    sandboxes_with_counts = result.all()
 
     out = []
-    for m in memberships:
-        sb_result = await db.execute(
-            select(InstitutionalSandbox).where(InstitutionalSandbox.id == m.sandbox_id)
-        )
-        sb = sb_result.scalar_one_or_none()
-        if not sb:
-            continue
-        count_result = await db.execute(
-            select(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
-        )
-        count = len(count_result.scalars().all())
+    for sb, count in sandboxes_with_counts:
         out.append(SandboxResponse(**sb.__dict__, member_count=count))
     return out
 
@@ -186,14 +187,15 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    from sqlalchemy import func
     count_result = await db.execute(
-        select(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
     )
-    count = len(count_result.scalars().all())
+    count = count_result.scalar()
     return SandboxResponse(**sandbox.__dict__, member_count=count)
 
 
-@router.get("/{sandbox_id}/members", response_model=List[MemberResponse])
+@router.get("/{sandbox_id}/members", response_model=list[MemberResponse])
 async def get_members(
     sandbox_id: str,
     current_user: dict = Depends(get_current_user),

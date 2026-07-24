@@ -1,10 +1,11 @@
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
-from typing import List, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer
-import uuid
-import time
 import os
+import time
+import uuid
+from typing import Any
+
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
+from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -37,7 +38,7 @@ class VectorStore:
             self._initialized = True
             logger.info("VectorStore initialization complete.")
         except Exception as e:
-            logger.error(f"Failed to initialize VectorStore: {str(e)}")
+            logger.error(f"Failed to initialize VectorStore: {e!s}")
             raise
 
     @property
@@ -64,14 +65,14 @@ class VectorStore:
                     )
                 )
         except Exception as e:
-            logger.error(f"Error checking/creating collection: {str(e)}")
+            logger.error(f"Error checking/creating collection: {e!s}")
     
     def add_query(
         self,
         query_id: str,
         query_text: str,
         answer: str,
-        metadata: Dict[str, Any]
+        metadata: dict[str, Any]
     ) -> str:
         start_time = time.time()
         combined_text = f"{query_text}\n\n{answer}"
@@ -98,15 +99,15 @@ class VectorStore:
             logger.info(f"Successfully added query {query_id} to vector store in {elapsed:.4f}s")
             return query_id
         except Exception as e:
-            logger.error(f"Failed to add query {query_id} to vector store: {str(e)}")
+            logger.error(f"Failed to add query {query_id} to vector store: {e!s}")
             raise
     
     def search_similar(
         self,
         query: str,
         k: int = 5,
-        user_id: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+        user_id: int | None = None
+    ) -> list[dict[str, Any]]:
         start_time = time.time()
         logger.info(f"Searching for similar queries to: '{query}'")
         
@@ -115,7 +116,7 @@ class VectorStore:
             
             query_filter = None
             if user_id:
-                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                from qdrant_client.models import FieldCondition, Filter, MatchValue
                 query_filter = Filter(
                     must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
                 )
@@ -140,12 +141,12 @@ class VectorStore:
             logger.info(f"Vector search found {len(similar_queries)} results in {elapsed:.4f}s")
             return similar_queries
         except Exception as e:
-            logger.error(f"Vector search failed: {str(e)}")
+            logger.error(f"Vector search failed: {e!s}")
             return []
     
     def delete_query(self, query_id: str) -> bool:
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
             
             self.client.delete(
                 collection_name=self.collection_name,
@@ -156,7 +157,7 @@ class VectorStore:
             logger.info(f"Deleted query {query_id} from vector store")
             return True
         except Exception as e:
-            logger.error(f"Failed to delete query {query_id} from vector store: {str(e)}")
+            logger.error(f"Failed to delete query {query_id} from vector store: {e!s}")
             return False
     
     def update_query(
@@ -164,7 +165,7 @@ class VectorStore:
         query_id: str,
         query_text: str,
         answer: str,
-        metadata: Dict[str, Any]
+        metadata: dict[str, Any]
     ) -> bool:
         try:
             logger.info(f"Updating query {query_id} in vector store")
@@ -172,10 +173,10 @@ class VectorStore:
             self.add_query(query_id, query_text, answer, metadata)
             return True
         except Exception as e:
-            logger.error(f"Failed to update query {query_id} in vector store: {str(e)}")
+            logger.error(f"Failed to update query {query_id} in vector store: {e!s}")
             return False
     
-    def index_papers(self, papers: List[Any], collection_name: str = None) -> int:
+    def index_papers(self, papers: list[Any], collection_name: str = None) -> int:
         """
         Embed and upsert a list of PaperBase objects into Qdrant.
         Returns the number of successfully indexed papers.
@@ -255,7 +256,7 @@ class VectorStore:
             logger.warning(f"RAG retrieval failed: {e}")
             return ""
 
-    def get_collection_stats(self) -> Dict[str, Any]:
+    def get_collection_stats(self) -> dict[str, Any]:
         try:
             info = self.client.get_collection(self.collection_name)
             return {
@@ -264,7 +265,7 @@ class VectorStore:
                 "model": settings.EMBEDDING_MODEL
             }
         except Exception as e:
-            logger.error(f"Failed to get collection stats: {str(e)}")
+            logger.error(f"Failed to get collection stats: {e!s}")
             return {}
 
 

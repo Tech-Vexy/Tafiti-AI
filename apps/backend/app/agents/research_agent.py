@@ -1,15 +1,14 @@
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from typing import List, Dict, Any, Optional, AsyncIterator
-import asyncio
 import json
 import re
+from collections.abc import AsyncIterator
+from typing import Any
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
-from app.models.schemas import PaperBase
 from app.core.logger import get_logger
+from app.models.schemas import PaperBase
 
 logger = get_logger("research_agent")
 
@@ -48,7 +47,7 @@ class ResearchAgent:
                 streaming=True,
             )
     
-    def _build_context(self, papers: List[PaperBase]) -> str:
+    def _build_context(self, papers: list[PaperBase]) -> str:
         context = ""
         for i, paper in enumerate(papers, 1):
             authors = ", ".join(paper.authors) if paper.authors else "Unknown"
@@ -95,7 +94,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     async def synthesize_streaming(
         self,
         query: str,
-        papers: List[PaperBase],
+        papers: list[PaperBase],
         output_language: str = "English",
         rag_context: str = "",
     ) -> AsyncIterator[str]:
@@ -115,10 +114,10 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     async def synthesize(
         self,
         query: str,
-        papers: List[PaperBase],
+        papers: list[PaperBase],
         output_language: str = "English",
         rag_context: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         context = self._build_context(papers)
         system_prompt = self._build_system_prompt(output_language=output_language)
         human_content = self._build_human_message(query, context, rag_context)
@@ -138,7 +137,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             "provider": self.provider
         }
     
-    async def extract_key_concepts(self, text: str) -> List[str]:
+    async def extract_key_concepts(self, text: str) -> list[str]:
         messages = [
             SystemMessage(content="Extract 3-5 key concepts/topics from the following text. Return as comma-separated list."),
             HumanMessage(content=text)
@@ -148,7 +147,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         concepts_text = response.generations[0][0].text
         return [c.strip() for c in concepts_text.split(",")]
     
-    async def suggest_follow_up(self, query: str, answer: str) -> List[str]:
+    async def suggest_follow_up(self, query: str, answer: str) -> list[str]:
         messages = [
             SystemMessage(content="Based on the research query and answer, suggest 3 relevant follow-up research questions. Return as numbered list."),
             HumanMessage(content=f"Query: {query}\n\nAnswer: {answer[:500]}...")
@@ -169,7 +168,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         self,
         context: str,
         query: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate 3-5 follow-up research questions after a synthesis."""
         messages = [
             SystemMessage(content=(
@@ -200,8 +199,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     async def chat_research_streaming(
         self,
         query: str,
-        history: List[Dict[str, str]],
-        local_papers: List["PaperBase"],
+        history: list[dict[str, str]],
+        local_papers: list["PaperBase"],
         uploaded_context: str = ""
     ) -> AsyncIterator[str]:
         """
@@ -239,7 +238,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     async def collaborate_research_streaming(
         self,
         query: str,
-        papers: List["PaperBase"]
+        papers: list["PaperBase"]
     ) -> AsyncIterator[str]:
         """
         Multi-perspective collaborative synthesis.
@@ -270,7 +269,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         self,
         paper: "PaperBase",
         career_field: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Explain why a specific paper matters to a user given their career field.
         Returns structured impact data with relevance score and key takeaway.
@@ -317,9 +316,9 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
 
     async def analyze_research_gaps(
         self,
-        papers: List[PaperBase],
-        research_context: Optional[str] = None
-    ) -> Dict[str, Any]:
+        papers: list[PaperBase],
+        research_context: str | None = None
+    ) -> dict[str, Any]:
         """
         Analyzes a corpus of papers and identifies what is missing —
         geographic, methodological, temporal, demographic, and theoretical gaps.

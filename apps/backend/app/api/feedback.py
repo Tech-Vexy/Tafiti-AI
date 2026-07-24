@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.models.database import User, TrialFeedback
-from app.models.schemas import FeedbackCreate, UserResponse, FeedbackPublicResponse
-from app.core.security import get_current_user
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import TrialFeedback, User
+from app.models.schemas import FeedbackCreate, FeedbackPublicResponse, UserResponse
 
 logger = get_logger("feedback_api")
 

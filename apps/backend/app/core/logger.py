@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Any
+
 
 def setup_logging():
     # Base configuration

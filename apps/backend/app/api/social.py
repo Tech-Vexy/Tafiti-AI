@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
-from typing import List
 
-from app.db.session import get_db
-from app.models.database import User, Connection, Notification
-from app.models.schemas import ConnectionResponse, NotificationResponse
-from app.core.security import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import Connection, Notification
+from app.models.schemas import ConnectionResponse, NotificationResponse
 
 logger = get_logger("social_api")
 router = APIRouter()
@@ -43,7 +43,7 @@ async def connect_to_user(
     notification = Notification(
         user_id=target_user_id,
         type="connection_request",
-        content=f"New connection from a scholar!",
+        content="New connection from a scholar!",
         link=f"/profile/{current_user['user_id']}"
     )
     db.add(notification)
@@ -52,7 +52,7 @@ async def connect_to_user(
     await db.refresh(connection)
     return connection
 
-@router.get("/notifications", response_model=List[NotificationResponse])
+@router.get("/notifications", response_model=list[NotificationResponse])
 async def get_notifications(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -128,7 +128,7 @@ async def unfollow_user(
     return {"status": "unfollowed"}
 
 
-@router.get("/followers", response_model=List[ConnectionResponse])
+@router.get("/followers", response_model=list[ConnectionResponse])
 async def list_followers(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -139,7 +139,7 @@ async def list_followers(
     return result.scalars().all()
 
 
-@router.get("/following", response_model=List[ConnectionResponse])
+@router.get("/following", response_model=list[ConnectionResponse])
 async def list_following(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

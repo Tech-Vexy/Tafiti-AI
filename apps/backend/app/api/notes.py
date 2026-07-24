@@ -1,18 +1,19 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
-from app.db.session import get_db
-from app.models.schemas import NoteCreate, NoteUpdate, NoteResponse
-from app.models.database import Note
-from app.core.security import get_current_user
 from sqlalchemy.future import select
-from datetime import datetime
+
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import Note
+from app.models.schemas import NoteCreate, NoteResponse, NoteUpdate
 
 logger = get_logger("notes_api")
 router = APIRouter()
 
-@router.get("/", response_model=List[NoteResponse])
+@router.get("/", response_model=list[NoteResponse])
 async def get_notes(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -91,4 +92,3 @@ async def delete_note(
     
     await db.delete(note)
     await db.commit()
-    return None

@@ -1,17 +1,17 @@
-import httpx
-from typing import List, Dict, Any, Optional
-from functools import lru_cache
 import asyncio
+from typing import Any
 
-from app.core.config import settings
-from app.models.schemas import PaperBase
-from app.core.logger import get_logger
+import httpx
+
 from app.core.cache import cache
+from app.core.config import settings
+from app.core.logger import get_logger
+from app.models.schemas import PaperBase
 
 logger = get_logger("openalex")
 
 class OpenAlexService:
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self.base_url = settings.OPENALEX_API_URL
         self.email = settings.OPENALEX_EMAIL
         self.api_key = settings.OPENALEX_API_KEY
@@ -25,7 +25,7 @@ class OpenAlexService:
             return httpx.AsyncClient(timeout=self.timeout)
         return self._client
 
-    def _reconstruct_abstract(self, inverted_index: Dict[str, List[int]]) -> Optional[str]:
+    def _reconstruct_abstract(self, inverted_index: dict[str, list[int]]) -> str | None:
         if not inverted_index:
             return None
         
@@ -37,14 +37,14 @@ class OpenAlexService:
         word_positions.sort(key=lambda x: x[0])
         return " ".join([word for _, word in word_positions])
     
-    def _extract_authors(self, authorships: List[Dict]) -> List[str]:
+    def _extract_authors(self, authorships: list[dict]) -> list[str]:
         authors = []
         for authorship in authorships[:5]:
             if 'author' in authorship and 'display_name' in authorship['author']:
                 authors.append(authorship['author']['display_name'])
         return authors
     
-    def _parse_work_to_paper(self, work: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_work_to_paper(self, work: dict[str, Any]) -> PaperBase | None:
         abstract = self._reconstruct_abstract(work.get('abstract_inverted_index'))
         if not abstract:
             return None
@@ -61,7 +61,7 @@ class OpenAlexService:
             authors=authors
         )
 
-    def _parse_work_minimal(self, work: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_work_minimal(self, work: dict[str, Any]) -> PaperBase | None:
         """Like _parse_work_to_paper but does not require an abstract."""
         if not work.get('title'):
             return None
@@ -81,9 +81,9 @@ class OpenAlexService:
         self,
         query: str,
         limit: int = 10,
-        filters: Optional[Dict[str, Any]] = None,
-        sort: Optional[str] = None
-    ) -> List[PaperBase]:
+        filters: dict[str, Any] | None = None,
+        sort: str | None = None
+    ) -> list[PaperBase]:
         # Try to get from cache
         cache_key = cache.make_key("openalex:search", query, limit, filters=filters, sort=sort)
         cached_results = await cache.get(cache_key)
@@ -141,10 +141,10 @@ class OpenAlexService:
 
             return papers
         except Exception as e:
-            logger.error(f"OpenAlex search failed: {str(e)}")
+            logger.error(f"OpenAlex search failed: {e!s}")
             raise
 
-    async def get_paper_details(self, paper_id: str) -> Optional[Dict[str, Any]]:
+    async def get_paper_details(self, paper_id: str) -> dict[str, Any] | None:
         params = {"mailto": self.email}
         if self.api_key:
             params["api_key"] = self.api_key
@@ -157,16 +157,16 @@ class OpenAlexService:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"OpenAlex get_paper_details failed for {paper_id}: {str(e)}")
+            logger.error(f"OpenAlex get_paper_details failed for {paper_id}: {e!s}")
             return None
     
-    async def get_referenced_works(self, paper_id: str, limit: int = 8) -> List[PaperBase]:
+    async def get_referenced_works(self, paper_id: str, limit: int = 8) -> list[PaperBase]:
         """Papers that the seed paper cites (its bibliography / ancestors)."""
         detail = await self.get_paper_details(paper_id)
         if not detail:
             return []
 
-        ref_urls: List[str] = detail.get('referenced_works', [])[:limit]
+        ref_urls: list[str] = detail.get('referenced_works', [])[:limit]
         if not ref_urls:
             return []
 
@@ -194,7 +194,7 @@ class OpenAlexService:
             logger.error(f"get_referenced_works failed for {paper_id}: {e}")
             return []
 
-    async def get_citing_papers(self, paper_id: str, limit: int = 8) -> List[PaperBase]:
+    async def get_citing_papers(self, paper_id: str, limit: int = 8) -> list[PaperBase]:
         """Papers that cite the seed paper (its descendants / future impact)."""
         params = {
             'filter': f'cites:{paper_id}',
@@ -222,7 +222,7 @@ class OpenAlexService:
         paper_id: str,
         refs_limit: int = 8,
         citing_limit: int = 8,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Parallel fetch of seed details + referenced works + citing papers."""
         # Fetch all three concurrently
         detail_task = self.get_paper_details(paper_id)
@@ -260,7 +260,7 @@ class OpenAlexService:
             'total_references_count': total_references_count,
         }
 
-    async def get_related_papers(self, paper_id: str, limit: int = 5) -> List[PaperBase]:
+    async def get_related_papers(self, paper_id: str, limit: int = 5) -> list[PaperBase]:
         params = {
             "per_page": limit,
             "mailto": self.email
@@ -285,7 +285,7 @@ class OpenAlexService:
             logger.info(f"OpenAlex related papers for {paper_id} returned {len(papers)} results")
             return papers
         except Exception as e:
-            logger.error(f"OpenAlex get_related_papers failed for {paper_id}: {str(e)}")
+            logger.error(f"OpenAlex get_related_papers failed for {paper_id}: {e!s}")
             return []
 
     async def get_citation_graph_abstract(self, paper_id: str) -> str:
@@ -297,9 +297,9 @@ class OpenAlexService:
 
 
 # ─── Factory — no lru_cache because AsyncClient is not hashable and causes stale-client bugs
-_openalex_singleton: Optional[OpenAlexService] = None
+_openalex_singleton: OpenAlexService | None = None
 
-def get_openalex_service(client: Optional[httpx.AsyncClient] = None) -> OpenAlexService:
+def get_openalex_service(client: httpx.AsyncClient | None = None) -> OpenAlexService:
     global _openalex_singleton
     if client is not None:
         # Called with a shared app client — return a fresh wrapper each time
@@ -322,7 +322,7 @@ class SemanticScholarService:
     BASE_URL = "https://api.semanticscholar.org/graph/v1"
     FIELDS = "paperId,title,year,citationCount,abstract,authors"
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -331,7 +331,7 @@ class SemanticScholarService:
             return httpx.AsyncClient(timeout=15.0)
         return self._client
 
-    def _parse_s2_paper(self, paper: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_s2_paper(self, paper: dict[str, Any]) -> PaperBase | None:
         """Convert a Semantic Scholar paper dict to PaperBase."""
         title = paper.get("title")
         paper_id = paper.get("paperId")
@@ -355,7 +355,7 @@ class SemanticScholarService:
         self,
         query: str,
         limit: int = 10,
-    ) -> List[PaperBase]:
+    ) -> list[PaperBase]:
         """Search Semantic Scholar for papers matching query."""
         cache_key = f"s2:search:{query}:{limit}"
         cached = await cache.get(cache_key)
@@ -387,9 +387,9 @@ class SemanticScholarService:
             return []
 
 
-_s2_singleton: Optional[SemanticScholarService] = None
+_s2_singleton: SemanticScholarService | None = None
 
-def get_semantic_scholar_service(client: Optional[httpx.AsyncClient] = None) -> SemanticScholarService:
+def get_semantic_scholar_service(client: httpx.AsyncClient | None = None) -> SemanticScholarService:
     global _s2_singleton
     if client is not None:
         return SemanticScholarService(client=client)
@@ -410,7 +410,7 @@ class ArxivService:
     """
     SEARCH_URL = "https://export.arxiv.org/api/query"
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -419,9 +419,8 @@ class ArxivService:
             return httpx.AsyncClient(timeout=15.0)
         return self._client
 
-    def _parse_atom_entry(self, entry: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_atom_entry(self, entry: dict[str, Any]) -> PaperBase | None:
         """Parse a single Atom feed <entry> element (already converted to dict)."""
-        import xml.etree.ElementTree as ET
         title = entry.get("title", "").replace("\n", " ").strip()
         arxiv_id_url = entry.get("id", "")
         arxiv_id = arxiv_id_url.split("/abs/")[-1].replace("/", "_") if arxiv_id_url else None
@@ -448,7 +447,7 @@ class ArxivService:
             authors=authors,
         )
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         """Search arXiv using the public query API."""
         cache_key = f"arxiv:search:{query}:{limit}"
         cached = await cache.get(cache_key)
@@ -472,9 +471,9 @@ class ArxivService:
                 "arxiv": "http://arxiv.org/schemas/atom",
             }
             root = ET.fromstring(response.text)
-            papers: List[PaperBase] = []
+            papers: list[PaperBase] = []
             for entry_el in root.findall("atom:entry", ns):
-                entry: Dict[str, Any] = {
+                entry: dict[str, Any] = {
                     "id": (entry_el.find("atom:id", ns) or {}).text or "",
                     "title": (entry_el.find("atom:title", ns) or {}).text or "",
                     "summary": (entry_el.find("atom:summary", ns) or {}).text or "",
@@ -497,9 +496,9 @@ class ArxivService:
             return []
 
 
-_arxiv_singleton: Optional[ArxivService] = None
+_arxiv_singleton: ArxivService | None = None
 
-def get_arxiv_service(client: Optional[httpx.AsyncClient] = None) -> ArxivService:
+def get_arxiv_service(client: httpx.AsyncClient | None = None) -> ArxivService:
     global _arxiv_singleton
     if client is not None:
         return ArxivService(client=client)
@@ -521,7 +520,7 @@ class COREService:
     Rate limit: 10 req/min (free), 150 req/min (premium).
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -530,7 +529,7 @@ class COREService:
             return httpx.AsyncClient(timeout=15.0)
         return self._client
 
-    def _parse_paper(self, item: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_paper(self, item: dict[str, Any]) -> PaperBase | None:
         title = (item.get("title") or "").strip()
         core_id = str(item.get("id") or "")
         if not title or not core_id:
@@ -556,7 +555,7 @@ class COREService:
             authors=authors,
         )
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         if not settings.CORE_API_KEY:
             core_logger.warning("CORE_API_KEY not set — skipping CORE search")
             return []
@@ -589,9 +588,9 @@ class COREService:
             return []
 
 
-_core_singleton: Optional[COREService] = None
+_core_singleton: COREService | None = None
 
-def get_core_service(client: Optional[httpx.AsyncClient] = None) -> COREService:
+def get_core_service(client: httpx.AsyncClient | None = None) -> COREService:
     global _core_singleton
     if client is not None:
         return COREService(client=client)
@@ -612,7 +611,7 @@ class ElsevierService:
     Rate limit: 20,000 req/week (free institutional key).
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -621,7 +620,7 @@ class ElsevierService:
             return httpx.AsyncClient(timeout=15.0)
         return self._client
 
-    def _parse_entry(self, entry: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_entry(self, entry: dict[str, Any]) -> PaperBase | None:
         title = (entry.get("dc:title") or "").strip()
         scopus_id = entry.get("dc:identifier", "").replace("SCOPUS_ID:", "")
         if not title or not scopus_id:
@@ -651,7 +650,7 @@ class ElsevierService:
             authors=authors,
         )
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         if not settings.ELSEVIER_API_KEY:
             elsevier_logger.warning("ELSEVIER_API_KEY not set — skipping Scopus search")
             return []
@@ -697,9 +696,9 @@ class ElsevierService:
             return []
 
 
-_elsevier_singleton: Optional[ElsevierService] = None
+_elsevier_singleton: ElsevierService | None = None
 
-def get_elsevier_service(client: Optional[httpx.AsyncClient] = None) -> ElsevierService:
+def get_elsevier_service(client: httpx.AsyncClient | None = None) -> ElsevierService:
     global _elsevier_singleton
     if client is not None:
         return ElsevierService(client=client)
@@ -721,7 +720,7 @@ class PubMedService:
     Two-step: esearch (get IDs) → efetch (get abstracts in XML).
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -730,13 +729,13 @@ class PubMedService:
             return httpx.AsyncClient(timeout=20.0)
         return self._client
 
-    def _base_params(self) -> Dict[str, str]:
-        params: Dict[str, str] = {"retmode": "json"}
+    def _base_params(self) -> dict[str, str]:
+        params: dict[str, str] = {"retmode": "json"}
         if settings.PUBMED_API_KEY:
             params["api_key"] = settings.PUBMED_API_KEY
         return params
 
-    async def _esearch(self, query: str, limit: int) -> List[str]:
+    async def _esearch(self, query: str, limit: int) -> list[str]:
         """Return a list of PubMed IDs for the query."""
         params = {
             **self._base_params(),
@@ -752,7 +751,7 @@ class PubMedService:
         data = response.json()
         return data.get("esearchresult", {}).get("idlist", [])
 
-    async def _efetch(self, pmids: List[str]) -> List[PaperBase]:
+    async def _efetch(self, pmids: list[str]) -> list[PaperBase]:
         """Fetch paper details for a list of PMIDs, parse XML."""
         import xml.etree.ElementTree as ET
 
@@ -768,7 +767,7 @@ class PubMedService:
         )
         response.raise_for_status()
 
-        papers: List[PaperBase] = []
+        papers: list[PaperBase] = []
         root = ET.fromstring(response.text)
         for article_el in root.findall(".//PubmedArticle"):
             try:
@@ -790,7 +789,7 @@ class PubMedService:
                 abstract = " ".join(abstract_parts)[:1500]
 
                 # Authors
-                authors: List[str] = []
+                authors: list[str] = []
                 for author_el in article_el.findall(".//Author")[:5]:
                     last = getattr(author_el.find("LastName"), "text", "") or ""
                     fore = getattr(author_el.find("ForeName"), "text", "") or ""
@@ -820,7 +819,7 @@ class PubMedService:
                 continue
         return papers
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         cache_key = f"pubmed:search:{query}:{limit}"
         cached = await cache.get(cache_key)
         if cached:
@@ -840,9 +839,9 @@ class PubMedService:
             return []
 
 
-_pubmed_singleton: Optional[PubMedService] = None
+_pubmed_singleton: PubMedService | None = None
 
-def get_pubmed_service(client: Optional[httpx.AsyncClient] = None) -> PubMedService:
+def get_pubmed_service(client: httpx.AsyncClient | None = None) -> PubMedService:
     global _pubmed_singleton
     if client is not None:
         return PubMedService(client=client)
@@ -863,7 +862,7 @@ class DOAJService:
     Rate limit: ~2 req/s (polite use).
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -872,7 +871,7 @@ class DOAJService:
             return httpx.AsyncClient(timeout=15.0)
         return self._client
 
-    def _parse_result(self, result: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_result(self, result: dict[str, Any]) -> PaperBase | None:
         bibjson = result.get("bibjson") or {}
         title = (bibjson.get("title") or "").strip()
         doaj_id = result.get("id") or ""
@@ -906,7 +905,7 @@ class DOAJService:
             authors=authors,
         )
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         cache_key = f"doaj:search:{query}:{limit}"
         cached = await cache.get(cache_key)
         if cached:
@@ -935,9 +934,9 @@ class DOAJService:
             return []
 
 
-_doaj_singleton: Optional[DOAJService] = None
+_doaj_singleton: DOAJService | None = None
 
-def get_doaj_service(client: Optional[httpx.AsyncClient] = None) -> DOAJService:
+def get_doaj_service(client: httpx.AsyncClient | None = None) -> DOAJService:
     global _doaj_singleton
     if client is not None:
         return DOAJService(client=client)
@@ -958,7 +957,7 @@ class AJOLService:
     OAI-PMH ListRecords endpoint is used; results are filtered by keyword match.
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -967,8 +966,7 @@ class AJOLService:
             return httpx.AsyncClient(timeout=20.0)
         return self._client
 
-    def _parse_oai_record(self, record_el: Any, ns: Dict[str, str]) -> Optional[PaperBase]:
-        import xml.etree.ElementTree as ET
+    def _parse_oai_record(self, record_el: Any, ns: dict[str, str]) -> PaperBase | None:
 
         header = record_el.find("oai:header", ns)
         if header is None:
@@ -1015,7 +1013,7 @@ class AJOLService:
             authors=authors,
         )
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         """
         AJOL does not support full-text search via OAI-PMH directly.
         We use ListRecords with a recent date range and filter by keyword in title/abstract.
@@ -1044,7 +1042,7 @@ class AJOLService:
             root = ET.fromstring(response.text)
 
             query_lower = query.lower()
-            papers: List[PaperBase] = []
+            papers: list[PaperBase] = []
             for record_el in root.findall(".//oai:record", ns):
                 paper = self._parse_oai_record(record_el, ns)
                 if paper is None:
@@ -1065,9 +1063,9 @@ class AJOLService:
             return []
 
 
-_ajol_singleton: Optional[AJOLService] = None
+_ajol_singleton: AJOLService | None = None
 
-def get_ajol_service(client: Optional[httpx.AsyncClient] = None) -> AJOLService:
+def get_ajol_service(client: httpx.AsyncClient | None = None) -> AJOLService:
     global _ajol_singleton
     if client is not None:
         return AJOLService(client=client)
@@ -1089,7 +1087,7 @@ class AfricArXivService:
     Filter: client-id=osf.africarxiv
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -1098,7 +1096,7 @@ class AfricArXivService:
             return httpx.AsyncClient(timeout=15.0)
         return self._client
 
-    def _parse_doi(self, item: Dict[str, Any]) -> Optional[PaperBase]:
+    def _parse_doi(self, item: dict[str, Any]) -> PaperBase | None:
         attrs = item.get("attributes") or {}
         titles = attrs.get("titles") or []
         title = next(
@@ -1141,7 +1139,7 @@ class AfricArXivService:
             authors=authors,
         )
 
-    async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:
+    async def search_papers(self, query: str, limit: int = 10) -> list[PaperBase]:
         cache_key = f"africarxiv:search:{query}:{limit}"
         cached = await cache.get(cache_key)
         if cached:
@@ -1170,9 +1168,9 @@ class AfricArXivService:
             return []
 
 
-_africarxiv_singleton: Optional[AfricArXivService] = None
+_africarxiv_singleton: AfricArXivService | None = None
 
-def get_africarxiv_service(client: Optional[httpx.AsyncClient] = None) -> AfricArXivService:
+def get_africarxiv_service(client: httpx.AsyncClient | None = None) -> AfricArXivService:
     global _africarxiv_singleton
     if client is not None:
         return AfricArXivService(client=client)

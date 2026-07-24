@@ -6,19 +6,19 @@ Other researchers submit reviews. The bounty creator awards the winner.
 Payment is processed via Paystack (KES).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 from datetime import datetime, timedelta
-from typing import List, Optional
-from pydantic import BaseModel, Field
-import httpx
 
-from app.db.session import get_db
-from app.models.database import Bounty, BountySubmission, User, Notification
-from app.core.security import get_current_user
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import Bounty, BountySubmission, Notification, User
 
 logger = get_logger("bounties")
 router = APIRouter()
@@ -27,8 +27,8 @@ router = APIRouter()
 # ─── Schemas ──────────────────────────────────────────────────────────────────
 
 class BountyCreate(BaseModel):
-    paper_id: Optional[str] = None
-    paper_title: Optional[str] = None
+    paper_id: str | None = None
+    paper_title: str | None = None
     description: str = Field(..., min_length=20)
     amount_kes: int = Field(default=0, ge=0)
     reputation_points: int = Field(default=10, ge=0)
@@ -38,14 +38,14 @@ class BountyCreate(BaseModel):
 class BountyResponse(BaseModel):
     id: str
     creator_id: str
-    paper_id: Optional[str] = None
-    paper_title: Optional[str] = None
+    paper_id: str | None = None
+    paper_title: str | None = None
     description: str
     amount_kes: int
     reputation_points: int
     status: str
     funded: bool
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     created_at: datetime
     submission_count: int = 0
 
@@ -76,7 +76,7 @@ class AwardRequest(BaseModel):
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async def _initiate_paystack_payment(bounty: Bounty, user_email: str) -> Optional[str]:
+async def _initiate_paystack_payment(bounty: Bounty, user_email: str) -> str | None:
     """
     Initialise a Paystack transaction to fund a bounty.
     Returns the authorisation_url to redirect the user to.
@@ -214,26 +214,31 @@ async def verify_bounty_funding(
     return {"status": "funded", "bounty_id": bounty_id}
 
 
-@router.get("/", response_model=List[BountyResponse])
+@router.get("/", response_model=list[BountyResponse])
 async def list_bounties(
     status: str = "open",
     limit: int = 20,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy import func
+    # Optimization: Added a scalar subquery to fetch submission count efficiently
+    # rather than creating N+1 queries in a loop.
+    subq = (
+        select(func.count(BountySubmission.id))
+        .where(BountySubmission.bounty_id == Bounty.id)
+        .correlate(Bounty)
+        .scalar_subquery()
+    )
     result = await db.execute(
-        select(Bounty)
-        .where(Bounty.status == status, Bounty.funded == True)  # noqa: E712
+        select(Bounty, subq)
+        .where(Bounty.status == status, Bounty.funded == True)
         .order_by(desc(Bounty.created_at))
         .limit(limit)
     )
-    bounties = result.scalars().all()
+    bounties_with_counts = result.all()
     out = []
-    for b in bounties:
-        sub_count_res = await db.execute(
-            select(BountySubmission).where(BountySubmission.bounty_id == b.id)
-        )
-        count = len(sub_count_res.scalars().all())
+    for b, count in bounties_with_counts:
         out.append(BountyResponse(**b.__dict__, submission_count=count))
     return out
 

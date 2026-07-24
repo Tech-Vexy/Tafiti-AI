@@ -1,9 +1,10 @@
-from fastapi import HTTPException, Security, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import httpx
-from jose import jwt, JWTError
 import time
 import traceback
+
+import httpx
+from fastapi import HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 
 from app.core.logger import get_logger
 
@@ -13,6 +14,7 @@ security = HTTPBearer()
 
 # Clerk Configuration
 import os
+
 _CLERK_DOMAIN = os.getenv("CLERK_DOMAIN", "profound-shrimp-65.clerk.accounts.dev")
 CLERK_JWKS_URL = f"https://{_CLERK_DOMAIN}/.well-known/jwks.json"
 CLERK_ISSUER = f"https://{_CLERK_DOMAIN}"
@@ -78,7 +80,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
         logger.warning(f"Token validation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid credentials: {str(e)}",
+            detail=f"Invalid credentials: {e!s}",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:

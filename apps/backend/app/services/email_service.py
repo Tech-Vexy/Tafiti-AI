@@ -3,10 +3,10 @@ Async email service using aiosmtplib + Jinja2 templates.
 Used for Ghost Profile invite emails.
 """
 
-import aiosmtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
+
+import aiosmtplib
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -65,7 +65,7 @@ async def send_ghost_invite(
     recipient_email: str,
     display_name: str,
     invite_token: str,
-    paper_doi: Optional[str] = None,
+    paper_doi: str | None = None,
 ) -> bool:
     """
     Send a Ghost Profile claim invitation email.

@@ -1,5 +1,6 @@
+
 import httpx
-from typing import Optional, Dict, Any
+
 from app.core.config import settings
 from app.core.logger import get_logger
 
@@ -12,7 +13,7 @@ class PinataService:
         self.jwt = settings.PINATA_JWT
         self.base_url = "https://api.pinata.cloud/pinning/pinFileToIPFS"
 
-    async def upload_file(self, file_content: bytes, filename: str) -> Optional[str]:
+    async def upload_file(self, file_content: bytes, filename: str) -> str | None:
         """
         Uploads a file to Pinata IPFS and returns the CID.
         """
@@ -42,7 +43,7 @@ class PinataService:
                 logger.info(f"File {filename} uploaded to Pinata IPFS. CID: {cid}")
                 return cid
         except Exception as e:
-            logger.error(f"Failed to upload to Pinata: {str(e)}")
+            logger.error(f"Failed to upload to Pinata: {e!s}")
             return None
 
 def get_pinata_service() -> PinataService:

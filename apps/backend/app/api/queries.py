@@ -1,20 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
-from typing import List
-from datetime import datetime
-import traceback
 import json
+import traceback
+from datetime import datetime
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logger import get_logger
+from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.database import SavedQuery, User
 from app.models.schemas import (
-    SavedQueryCreate, SavedQueryResponse, SavedQueryUpdate,
-    VectorSearchRequest, VectorSearchResult, PaperBase
+    PaperBase,
+    SavedQueryCreate,
+    SavedQueryResponse,
+    SavedQueryUpdate,
+    VectorSearchRequest,
+    VectorSearchResult,
 )
-from app.core.security import get_current_user
 from app.services.vector_service import vector_store
-from app.core.logger import get_logger
 
 logger = get_logger("queries_api")
 
@@ -79,12 +83,12 @@ async def create_saved_query(
         
         return saved_query
     except Exception as e:
-        logger.error(f"Failed to create saved query: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Failed to create saved query: {e!s}\n{traceback.format_exc()}")
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=List[SavedQueryResponse])
+@router.get("/", response_model=list[SavedQueryResponse])
 async def get_saved_queries(
     skip: int = 0,
     limit: int = 50,
@@ -218,7 +222,7 @@ async def toggle_favorite(
     return query
 
 
-@router.post("/search", response_model=List[VectorSearchResult])
+@router.post("/search", response_model=list[VectorSearchResult])
 async def vector_search(
     search_request: VectorSearchRequest,
     current_user: dict = Depends(get_current_user)
@@ -242,7 +246,7 @@ async def vector_search(
     return formatted_results
 
 
-@router.get("/favorites/list", response_model=List[SavedQueryResponse])
+@router.get("/favorites/list", response_model=list[SavedQueryResponse])
 async def get_favorites(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -291,7 +295,7 @@ async def save_paper(
     return paper
 
 
-@router.get("/library/papers", response_model=List[PaperBase])
+@router.get("/library/papers", response_model=list[PaperBase])
 async def get_library_papers(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
