@@ -1,34 +1,16 @@
-"""
-Pydantic AI multi-agent routing: Drafter + Critic.
-
-Flow:
-1. DrafterAgent (Gemini large context) produces a raw synthesis draft
-   from the provided papers — same job as ResearchAgent.synthesize() but
-   via pydantic-ai for strict typed output.
-2. CriticAgent (Groq fast reasoning) validates every citation in the draft,
-   checking that each [Source N] claim is actually supported by the source text.
-   Returns a structured ValidatedSynthesis with a per-citation confidence score.
-3. The final answer is the validated draft with low-confidence claims flagged.
-
-This agent is used by the /research/synthesize/validated endpoint.
-"""
-
 from __future__ import annotations
 
 import re
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
+from agno.agent import Agent
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.schemas import PaperBase
 
 logger = get_logger("critic_agent")
-
-
-# ─── Output Schemas ───────────────────────────────────────────────────────────
 
 class CitationCheck(BaseModel):
     source_ref: str          # e.g. "[Source 3]"
@@ -37,7 +19,6 @@ class CitationCheck(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     note: Optional[str] = None   # critic's note if unsupported
 
-
 class ValidatedSynthesis(BaseModel):
     draft: str                           # full synthesis text (may include [FLAGGED] markers)
     citations: List[CitationCheck] = []
@@ -45,14 +26,14 @@ class ValidatedSynthesis(BaseModel):
     overall_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critique_summary: Optional[str] = None
 
-
-# ─── Agents ───────────────────────────────────────────────────────────────────
-
 def _build_drafter_agent() -> Agent:
-    model = getattr(settings, "DRAFTER_MODEL", "gemini-1.5-pro")
+    model_str = getattr(settings, "DRAFTER_MODEL", "google:gemini-1.5-pro")
+    if model_str.startswith("gemini"):
+        model_str = f"google:{model_str}"
+
     return Agent(
-        model,
-        system_prompt=(
+        model=model_str,
+        system_message=(
             "You are an expert academic researcher. "
             "Synthesise the provided papers into a dense, well-cited academic paragraph. "
             "Use [Source N] inline citations for every factual claim. "
@@ -60,27 +41,22 @@ def _build_drafter_agent() -> Agent:
         ),
     )
 
-
-def _build_critic_agent() -> Agent[None, ValidatedSynthesis]:
-    model = getattr(settings, "CRITIC_MODEL", "groq:llama-3.3-70b-versatile")
+def _build_critic_agent() -> Agent:
+    model_str = getattr(settings, "CRITIC_MODEL", "groq:llama-3.3-70b-versatile")
     return Agent(
-        model,
-        result_type=ValidatedSynthesis,
-        system_prompt=(
+        model=model_str,
+        output_schema=ValidatedSynthesis,
+        system_message=(
             "You are a rigorous academic fact-checker. "
             "Given a synthesis draft and source paper abstracts, "
             "verify that every [Source N] citation is supported by the source text. "
-            "Return a ValidatedSynthesis JSON object. "
             "For unsupported claims set supported=false and provide a note. "
             "Calculate overall_confidence as mean of all citation confidence scores."
         ),
     )
 
-
-# Singletons built lazily
 _drafter: Optional[Agent] = None
 _critic: Optional[Agent] = None
-
 
 def get_drafter() -> Agent:
     global _drafter
@@ -88,15 +64,11 @@ def get_drafter() -> Agent:
         _drafter = _build_drafter_agent()
     return _drafter
 
-
 def get_critic() -> Agent:
     global _critic
     if _critic is None:
         _critic = _build_critic_agent()
     return _critic
-
-
-# ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def _build_context_block(papers: List[PaperBase]) -> str:
     parts = []
@@ -110,16 +82,11 @@ def _build_context_block(papers: List[PaperBase]) -> str:
         )
     return "\n".join(parts)
 
-
 async def validated_synthesis(
     query: str,
     papers: List[PaperBase],
     output_language: str = "English",
 ) -> ValidatedSynthesis:
-    """
-    Full Drafter → Critic pipeline.
-    Falls back to a plain synthesis (no critique) if pydantic-ai is unavailable.
-    """
     context = _build_context_block(papers)
     language_note = (
         f"\n\nIMPORTANT: Write the entire synthesis in {output_language}."
@@ -132,8 +99,8 @@ async def validated_synthesis(
 
     try:
         drafter = get_drafter()
-        draft_result = await drafter.run(drafter_prompt)
-        draft_text: str = draft_result.data
+        draft_result = await drafter.arun(drafter_prompt)
+        draft_text: str = draft_result.content
     except Exception as e:
         logger.warning(f"Drafter agent failed, falling back to empty draft: {e}")
         return ValidatedSynthesis(
@@ -150,11 +117,12 @@ async def validated_synthesis(
 
     try:
         critic = get_critic()
-        validated: ValidatedSynthesis = (await critic.run(critic_prompt)).data
-        # Inject the actual draft text in case the critic only returned metadata
+        validated_result = await critic.arun(critic_prompt)
+        validated: ValidatedSynthesis = validated_result.content
+
         if not validated.draft:
             validated.draft = draft_text
-        # Mark flagged claims inline
+
         flagged = [c for c in validated.citations if not c.supported]
         validated.flagged_count = len(flagged)
         for flag in flagged:
