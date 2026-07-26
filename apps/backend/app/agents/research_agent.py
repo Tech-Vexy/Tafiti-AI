@@ -1,54 +1,57 @@
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from typing import List, Dict, Any, Optional, AsyncIterator
-import asyncio
-import json
-import re
+from collections.abc import AsyncIterator
+from typing import Any
+
+from agno.agent import Agent
+from agno.models.message import Message
+from pydantic import BaseModel
 
 from app.core.config import settings
-from app.models.schemas import PaperBase
 from app.core.logger import get_logger
+from app.models.schemas import PaperBase
 
 logger = get_logger("research_agent")
 
+class KeyConceptsOutput(BaseModel):
+    concepts: list[str]
+
+class FollowupQuestionsOutput(BaseModel):
+    questions: list[str]
+
+class PaperImpactOutput(BaseModel):
+    impact_summary: str
+    relevance_score: int
+    key_takeaway: str
+
+class GapAnalysisGap(BaseModel):
+    category: str
+    title: str
+    description: str
+    suggested_questions: list[str]
+    urgency: str
+
+class GapAnalysisOutput(BaseModel):
+    summary: str
+    gaps: list[GapAnalysisGap]
 
 class ResearchAgent:
     def __init__(self, provider: str = None, model: str = None):
         self.provider = provider or settings.DEFAULT_LLM_PROVIDER
         self.model = model or settings.DEFAULT_LLM_MODEL
 
+        # Agno model string: "provider:model_id"
+        # However, for groq, openai, google, we can use canonical strings
         if self.provider == "gemini":
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            self.llm = ChatGoogleGenerativeAI(
-                model=self.model or "gemini-1.5-flash",
-                temperature=settings.LLM_TEMPERATURE,
-                max_output_tokens=settings.LLM_MAX_TOKENS,
-                google_api_key=settings.GOOGLE_API_KEY,
-                streaming=True,
-            )
+            self.model_str = f"google:{self.model or settings.GEMINI_DEFAULT_MODEL}"
+        elif self.provider == "groq":
+            self.model_str = f"groq:{self.model}"
+        elif self.provider == "openai":
+            self.model_str = f"openai:{self.model}"
         else:
-            if self.provider == "groq":
-                base_url = "https://api.groq.com/openai/v1"
-                api_key = settings.GROQ_API_KEY
-            elif self.provider == "openai":
-                base_url = None
-                api_key = settings.OPENAI_API_KEY
-            else:
-                base_url = "http://localhost:11434/v1"
-                api_key = "ollama"
+            self.model_str = f"{self.provider}:{self.model}"
 
-            self.llm = ChatOpenAI(
-                model_name=self.model,
-                temperature=settings.LLM_TEMPERATURE,
-                max_tokens=settings.LLM_MAX_TOKENS,
-                openai_api_base=base_url,
-                openai_api_key=api_key,
-                streaming=True,
-            )
+        self.temperature = settings.LLM_TEMPERATURE
     
-    def _build_context(self, papers: List[PaperBase]) -> str:
+    def _build_context(self, papers: list[PaperBase]) -> str:
         context = ""
         for i, paper in enumerate(papers, 1):
             authors = ", ".join(paper.authors) if paper.authors else "Unknown"
@@ -95,7 +98,7 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     async def synthesize_streaming(
         self,
         query: str,
-        papers: List[PaperBase],
+        papers: list[PaperBase],
         output_language: str = "English",
         rag_context: str = "",
     ) -> AsyncIterator[str]:
@@ -103,91 +106,79 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         system_prompt = self._build_system_prompt(output_language=output_language)
         human_content = self._build_human_message(query, context, rag_context)
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_content),
-        ]
+        agent = Agent(
+            model=self.model_str,
+            system_message=system_prompt
+        )
 
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        async for event in agent.arun(human_content, stream=True):
+            if hasattr(event, "content") and event.content:
+                yield event.content
 
     async def synthesize(
         self,
         query: str,
-        papers: List[PaperBase],
+        papers: list[PaperBase],
         output_language: str = "English",
         rag_context: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         context = self._build_context(papers)
         system_prompt = self._build_system_prompt(output_language=output_language)
         human_content = self._build_human_message(query, context, rag_context)
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_content),
-        ]
+        agent = Agent(
+            model=self.model_str,
+            system_message=system_prompt
+        )
 
-        response = await self.llm.agenerate([messages])
-        answer = response.generations[0][0].text
+        response = await agent.arun(human_content)
 
         return {
-            "answer": answer,
+            "answer": response.content,
             "sources_used": list(range(1, len(papers) + 1)),
             "model": self.model,
             "provider": self.provider
         }
     
-    async def extract_key_concepts(self, text: str) -> List[str]:
-        messages = [
-            SystemMessage(content="Extract 3-5 key concepts/topics from the following text. Return as comma-separated list."),
-            HumanMessage(content=text)
-        ]
+    async def extract_key_concepts(self, text: str) -> list[str]:
+        agent = Agent(
+            model=self.model_str,
+            system_message="Extract 3-5 key concepts/topics from the following text.",
+            output_schema=KeyConceptsOutput
+        )
         
-        response = await self.llm.agenerate([messages])
-        concepts_text = response.generations[0][0].text
-        return [c.strip() for c in concepts_text.split(",")]
+        response = await agent.arun(text)
+        return response.content.concepts
     
-    async def suggest_follow_up(self, query: str, answer: str) -> List[str]:
-        messages = [
-            SystemMessage(content="Based on the research query and answer, suggest 3 relevant follow-up research questions. Return as numbered list."),
-            HumanMessage(content=f"Query: {query}\n\nAnswer: {answer[:500]}...")
-        ]
+    async def suggest_follow_up(self, query: str, answer: str) -> list[str]:
+        agent = Agent(
+            model=self.model_str,
+            system_message="Based on the research query and answer, suggest 3 relevant follow-up research questions.",
+            output_schema=FollowupQuestionsOutput
+        )
         
-        response = await self.llm.agenerate([messages])
-        suggestions_text = response.generations[0][0].text
-        
-        suggestions = []
-        for line in suggestions_text.split("\n"):
-            line = line.strip()
-            if line and (line[0].isdigit() or line.startswith("-")):
-                suggestions.append(line.lstrip("0123456789.-) "))
-        
-        return suggestions[:3]
+        response = await agent.arun(f"Query: {query}\n\nAnswer: {answer[:500]}...")
+        return response.content.questions[:3]
 
     async def generate_followup_questions(
         self,
         context: str,
         query: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate 3-5 follow-up research questions after a synthesis."""
-        messages = [
-            SystemMessage(content=(
+        agent = Agent(
+            model=self.model_str,
+            system_message=(
                 "You are a research advisor. Given the following research context and query, "
                 "generate exactly 4 concise, specific follow-up research questions that would "
-                "deepen understanding of the topic. Return them as a JSON array of strings only, "
-                "no other text. Example: [\"Question 1?\", \"Question 2?\"]"
-            )),
-            HumanMessage(content=f"Query: {query}\n\nContext excerpt:\n{context[:1500]}")
-        ]
+                "deepen understanding of the topic."
+            ),
+            output_schema=FollowupQuestionsOutput
+        )
         try:
-            response = await self.llm.agenerate([messages])
-            raw = response.generations[0][0].text.strip()
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            questions = json.loads(raw)
-            if isinstance(questions, list):
-                return [str(q) for q in questions[:5]]
+            response = await agent.arun(f"Query: {query}\n\nContext excerpt:\n{context[:1500]}")
+            if response.content and hasattr(response.content, "questions"):
+                return [str(q) for q in response.content.questions[:5]]
         except Exception as e:
             logger.warning(f"Follow-up question generation failed: {e}")
         # Fallback
@@ -200,8 +191,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     async def chat_research_streaming(
         self,
         query: str,
-        history: List[Dict[str, str]],
-        local_papers: List["PaperBase"],
+        history: list[dict[str, str]],
+        local_papers: list["PaperBase"],
         uploaded_context: str = ""
     ) -> AsyncIterator[str]:
         """
@@ -223,23 +214,23 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         if uploaded_context:
             system_content += f"\n\nUploaded document content:\n{uploaded_context[:3000]}"
 
-        messages = [SystemMessage(content=system_content)]
-        for msg in history[-8:]:  # Keep last 8 messages for context window efficiency
-            if msg["role"] == "user":
-                messages.append(HumanMessage(content=msg["content"]))
-            else:
-                from langchain_core.messages import AIMessage
-                messages.append(AIMessage(content=msg["content"]))
-        messages.append(HumanMessage(content=query))
+        # Map history directly since Agno's `input` can accept list of Dicts or Message objects
+        messages = [Message(role=m["role"], content=m["content"]) for m in history[-8:]]
+        messages.append(Message(role="user", content=query))
 
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        agent = Agent(
+            model=self.model_str,
+            system_message=system_content
+        )
+
+        async for event in agent.arun(messages, stream=True):
+            if hasattr(event, "content") and event.content:
+                yield event.content
 
     async def collaborate_research_streaming(
         self,
         query: str,
-        papers: List["PaperBase"]
+        papers: list["PaperBase"]
     ) -> AsyncIterator[str]:
         """
         Multi-perspective collaborative synthesis.
@@ -257,69 +248,61 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             "End with a unified 'Collaborative Conclusion' that integrates both views."
         )
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Research Question: {query}\n\nCorpus:\n{context}\n\nBegin collaborative analysis:")
-        ]
+        agent = Agent(
+            model=self.model_str,
+            system_message=system_prompt
+        )
 
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        human_content = f"Research Question: {query}\n\nCorpus:\n{context}\n\nBegin collaborative analysis:"
+        async for event in agent.arun(human_content, stream=True):
+            if hasattr(event, "content") and event.content:
+                yield event.content
 
     async def explain_paper_impact(
         self,
         paper: "PaperBase",
         career_field: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Explain why a specific paper matters to a user given their career field.
         Returns structured impact data with relevance score and key takeaway.
         """
-        messages = [
-            SystemMessage(content=(
+        agent = Agent(
+            model=self.model_str,
+            system_message=(
                 "You are a research mentor helping a professional understand the relevance "
-                "of academic papers to their specific career field. "
-                "Return ONLY a valid JSON object with exactly these keys: "
-                "impact_summary (2-3 sentence explanation), "
-                "relevance_score (integer 1-10), "
-                "key_takeaway (one sentence, the single most actionable insight). "
-                "No markdown fences, no extra text."
-            )),
-            HumanMessage(content=(
-                f"Career field: {career_field}\n\n"
-                f"Paper title: {paper.title}\n"
-                f"Authors: {', '.join(paper.authors or [])}\n"
-                f"Year: {paper.year}\n"
-                f"Citations: {paper.citations}\n"
-                f"Abstract: {paper.abstract or 'No abstract available.'}\n\n"
-                f"Explain the impact of this paper for someone in {career_field}:"
-            ))
-        ]
+                "of academic papers to their specific career field."
+            ),
+            output_schema=PaperImpactOutput
+        )
 
-        response = await self.llm.agenerate([messages])
-        raw = response.generations[0][0].text.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
+        human_content = (
+            f"Career field: {career_field}\n\n"
+            f"Paper title: {paper.title}\n"
+            f"Authors: {', '.join(paper.authors or [])}\n"
+            f"Year: {paper.year}\n"
+            f"Citations: {paper.citations}\n"
+            f"Abstract: {paper.abstract or 'No abstract available.'}\n\n"
+            f"Explain the impact of this paper for someone in {career_field}:"
+        )
 
         try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", raw, re.DOTALL)
-            if match:
-                data = json.loads(match.group())
-            else:
-                data = {
-                    "impact_summary": f"This paper contributes to research relevant to {career_field}.",
-                    "relevance_score": 5,
-                    "key_takeaway": paper.title,
-                }
+            response = await agent.arun(human_content)
+            data = response.content.dict()
+        except Exception as e:
+            logger.warning(f"Paper impact explanation failed: {e}")
+            data = {
+                "impact_summary": f"This paper contributes to research relevant to {career_field}.",
+                "relevance_score": 5,
+                "key_takeaway": paper.title,
+            }
         return data
 
     async def analyze_research_gaps(
         self,
-        papers: List[PaperBase],
-        research_context: Optional[str] = None
-    ) -> Dict[str, Any]:
+        papers: list[PaperBase],
+        research_context: str | None = None
+    ) -> dict[str, Any]:
         """
         Analyzes a corpus of papers and identifies what is missing —
         geographic, methodological, temporal, demographic, and theoretical gaps.
@@ -339,58 +322,26 @@ A "research gap" is something that the provided papers collectively do NOT addre
 an unstudied population, unexplored methodology, missing geography, ignored time period,
 untested theory, or an absent interdisciplinary perspective.
 
-You MUST return your answer as a single valid JSON object — no markdown fences, no extra text.
-The JSON must have exactly this structure:
-{
-  "summary": "A 2-3 sentence executive summary of what the corpus covers and what is missing overall.",
-  "gaps": [
-    {
-      "category": "Geographic",
-      "title": "Short descriptive title of the gap",
-      "description": "2-3 sentence explanation of why this gap exists in the corpus and why it matters.",
-      "suggested_questions": [
-        "A concrete, researchable question that would fill this gap.",
-        "A second researchable question."
-      ],
-      "urgency": "High"
-    }
-  ]
-}
-
-CATEGORY must be one of: Geographic, Methodological, Temporal, Demographic, Theoretical, Interdisciplinary
-URGENCY must be one of: High, Medium, Low
 Return between 4 and 7 gaps. Be specific and scholarly. Do NOT invent papers; only analyze what is given."""
+
+        agent = Agent(
+            model=self.model_str,
+            system_message=system_prompt,
+            output_schema=GapAnalysisOutput
+        )
 
         user_prompt = f"""Research Corpus ({len(papers)} papers):
 
 {context}{context_clause}
 
-Perform the Gap Analysis and return only the JSON object:"""
-
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
-
-        response = await self.llm.agenerate([messages])
-        raw_text = response.generations[0][0].text.strip()
-
-        # Strip markdown fences if the LLM wraps in ```json ... ```
-        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
-        raw_text = re.sub(r"\s*```$", "", raw_text)
+Perform the Gap Analysis:"""
 
         try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # Attempt to extract JSON block if there is surrounding text
-            match = re.search(r"\{.*\}", raw_text, re.DOTALL)
-            if match:
-                data = json.loads(match.group())
-            else:
-                raise ValueError(f"LLM did not return valid JSON. Raw output: {raw_text[:300]}")
-
-        return data
-
+            response = await agent.arun(user_prompt)
+            return response.content.dict()
+        except Exception as e:
+            logger.error(f"Gap analysis failed: {e}")
+            raise ValueError("LLM failed to generate valid gap analysis data.")
 
 def get_research_agent(provider: str = None, model: str = None) -> ResearchAgent:
     return ResearchAgent(provider=provider, model=model)

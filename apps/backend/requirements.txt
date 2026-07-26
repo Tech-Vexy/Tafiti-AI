@@ -11,14 +11,8 @@ passlib[bcrypt]
 python-multipart
 
 # LLM & Agent Frameworks
-langchain
-langchain-core
-langchain-openai
-langchain-community
-langchain-google-genai
 openai
 groq
-pydantic-ai-slim[openai,groq,google]
 
 # Vector Database
 qdrant-client
@@ -45,3 +39,5 @@ pytest
 pytest-asyncio
 black
 ruff
+agno
+google-genai
