@@ -1,0 +1,3 @@
+## 2024-06-25 - N+1 Queries with scalars().all()
+**Learning:** Found an anti-pattern across `bounties.py` and `sandboxes.py` where related counts were being calculated in Python by executing an internal loop query and calling `len(result.scalars().all())`. In `bounties.py`, this caused a classic N+1 query issue. In `sandboxes.py`, it caused unnecessary ORM object instantiation just for a simple count.
+**Action:** Replace looped `len(result.scalars().all())` with batched `scalar_subquery()` counts using `func.count()`. For standalone counts, use `select(func.count()).select_from(Model)` and retrieve with `.scalar()`.
