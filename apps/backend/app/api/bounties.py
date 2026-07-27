@@ -223,6 +223,10 @@ async def list_bounties(
 ):
     # Optimization: Replaced N+1 queries using scalar_subquery to batch submission count calculation
     # Expected impact: Reduced database roundtrips and memory bloat from looping over bounties
+    # Performance Optimization: Avoid N+1 queries and loading all submissions into memory.
+    # Use scalar_subquery to retrieve the submission count alongside each Bounty in a single DB roundtrip.
+    # ⚡ Bolt Optimization: Replacing N+1 query loop with a single scalar subquery
+    # Expectation: Reduces number of queries from 1 + N to 1, significantly improving list endpoint performance
     subq = (
         select(func.count(BountySubmission.id))
         .where(BountySubmission.bounty_id == Bounty.id)
@@ -230,6 +234,9 @@ async def list_bounties(
     )
 
     stmt = (
+    result = await db.execute(
+        select(Bounty, subq.label('submission_count'))
+    result = await db.execute(
         select(Bounty, subq.label("submission_count"))
         .where(Bounty.status == status, Bounty.funded == True)  # noqa: E712
         .order_by(desc(Bounty.created_at))
@@ -243,6 +250,13 @@ async def list_bounties(
     for b, count in rows:
         out.append(BountyResponse(**b.__dict__, submission_count=count))
 
+    rows = result.all()
+    out = []
+    for b, sub_count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=sub_count or 0))
+    out = []
+    for bounty, count in result.all():
+        out.append(BountyResponse(**bounty.__dict__, submission_count=count))
     return out
 
 
