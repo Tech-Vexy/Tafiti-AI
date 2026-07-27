@@ -1,3 +1,6 @@
+## 2024-05-18 - Avoid Memory Bloat and N+1 Queries with SQLAlchemy `scalar_subquery`
+**Learning:** Calculating record counts using `len(result.scalars().all())` inside loops leads to N+1 database queries and significant memory bloat, as it fetches all related records into memory just to count them.
+**Action:** When counting related records alongside a list fetch, batch the queries using `scalar_subquery()` combined with `func.count()`. For individual count queries, use `select(func.count())` and fetch the integer using `scalar_one()` instead of loading the object scalar list.
 ## 2026-06-19 - N+1 Memory Bloat Anti-Pattern using `len(result.scalars().all())`
 **Learning:** Found a critical and recurring performance anti-pattern in the backend API layer (`sandboxes.py` and `bounties.py`). When fetching lists of entities (like sandboxes or bounties), the application was executing N+1 queries by looping over results and doing a `select()` for related child items (like members or submissions). Even worse, it was loading all the child records into memory with `.all()` and calling Python's `len()` just to get a count, instead of doing an efficient SQL `COUNT`. This causes huge unnecessary memory pressure and drastically slower request times, particularly for entities with many children.
 
