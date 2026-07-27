@@ -152,7 +152,35 @@ async def list_my_sandboxes(
     for row in result.all():
         sb = row.InstitutionalSandbox
         count = row.member_count
+    # Performance Optimization:
+    # Use a single query with a scalar subquery for member count, eliminating the
+    # N+1 queries previously done inside a python loop.
+    count_subquery = (
+        select(func.count(SandboxMember.user_id))
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
+    # Optimization: Replaced N+1 queries using scalar_subquery to batch member count calculation
+    # Expected impact: Reduced database roundtrips and memory bloat from looping over memberships
+    subq = (
+        select(func.count(SandboxMember.id))
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        select(InstitutionalSandbox, count_subquery.label("member_count"))
+        select(InstitutionalSandbox, subq.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    out = []
+    for sb, count in rows:
         out.append(SandboxResponse(**sb.__dict__, member_count=count))
+
     return out
 
 
@@ -199,6 +227,16 @@ async def join_sandbox(
         .where(SandboxMember.sandbox_id == sandbox.id)
     )
     count = count_result.scalar()
+    # Performance Optimization:
+    # Get the count directly via func.count() instead of pulling all rows into python memory.
+    count_result = await db.execute(
+        select(func.count(SandboxMember.user_id)).where(SandboxMember.sandbox_id == sandbox.id)
+    # Optimization: Replaced len(result.scalars().all()) with select(func.count())
+    # Expected impact: Faster execution time by avoiding fetching all rows into memory to count them
+    count_result = await db.execute(
+        select(func.count(SandboxMember.id)).where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    count = count_result.scalar_one()
     return SandboxResponse(**sandbox.__dict__, member_count=count)
 
 
