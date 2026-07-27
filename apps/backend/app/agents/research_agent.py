@@ -3,6 +3,11 @@ from typing import Any
 
 from agno.agent import Agent
 from agno.models.message import Message
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.arxiv import ArxivTools
+from agno.db.sqlite import SqliteDb
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.arxiv import ArxivTools
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -220,7 +225,11 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
 
         agent = Agent(
             model=self.model_str,
-            system_message=system_content
+            system_message=system_content,
+            tools=[DuckDuckGoTools(), ArxivTools()],
+            db=SqliteDb(db_file="tmp/memory.db"),
+            add_history_to_context=True,
+            num_history_runs=3,
         )
 
         async for event in agent.arun(messages, stream=True):
