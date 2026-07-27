@@ -337,3 +337,30 @@ class GapAnalysisResponse(BaseModel):
     summary: str
     papers_analyzed: int
     processing_time: float
+
+# Deep Research Schemas
+class DeepResearchRequest(BaseModel):
+    query: str
+    mcp_servers: Optional[List[str]] = None  # e.g., ["http://localhost:8000/mcp"]
+
+class DeepResearchResponse(BaseModel):
+    interaction_id: str
+    message: str
+
+class DeepResearchStatusResponse(BaseModel):
+    interaction_id: str
+    status: str
+    output: Optional[str] = None
+    error: Optional[str] = None
+
+class CitationValidation(BaseModel):
+    claim: str
+    citation: str
+    is_valid: bool
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    explanation: Optional[str] = None
+
+class DeepResearchValidationResponse(BaseModel):
+    interaction_id: str
+    overall_confidence: float = Field(ge=0.0, le=1.0)
+    validations: List[CitationValidation]
