@@ -2,6 +2,7 @@ from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON
 import os
+if os.environ.get("TESTING") == "1":
 from sqlalchemy import JSON
 if os.environ.get('TESTING') == '1':
     JSONB = JSON

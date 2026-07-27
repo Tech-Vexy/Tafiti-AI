@@ -129,6 +129,13 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # Performance Optimization:
+    # Use a single query with a scalar subquery for member count, eliminating the
+    # N+1 queries previously done inside a python loop.
+    count_subquery = (
+        select(func.count(SandboxMember.user_id))
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
     # Optimization: Replaced N+1 queries using scalar_subquery to batch member count calculation
     # Expected impact: Reduced database roundtrips and memory bloat from looping over memberships
     subq = (
@@ -138,6 +145,7 @@ async def list_my_sandboxes(
     )
 
     stmt = (
+        select(InstitutionalSandbox, count_subquery.label("member_count"))
         select(InstitutionalSandbox, subq.label("member_count"))
         .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
         .where(SandboxMember.user_id == current_user["user_id"])
@@ -189,6 +197,10 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # Performance Optimization:
+    # Get the count directly via func.count() instead of pulling all rows into python memory.
+    count_result = await db.execute(
+        select(func.count(SandboxMember.user_id)).where(SandboxMember.sandbox_id == sandbox.id)
     # Optimization: Replaced len(result.scalars().all()) with select(func.count())
     # Expected impact: Faster execution time by avoiding fetching all rows into memory to count them
     count_result = await db.execute(
