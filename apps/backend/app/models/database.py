@@ -47,6 +47,7 @@ class User(Base):
     saved_papers = relationship("SavedPaper", back_populates="user", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     research_sessions = relationship("ResearchSession", back_populates="user", cascade="all, delete-orphan")
+    deep_research_sessions = relationship("DeepResearchSession", back_populates="user", cascade="all, delete-orphan")
     search_history = relationship("SearchHistory", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("ResearchProject", back_populates="owner", cascade="all, delete-orphan")
     memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
@@ -425,3 +426,18 @@ class UploadedFile(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", backref="uploaded_files")
+
+class DeepResearchSession(Base):
+    __tablename__ = "deep_research_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    query = Column(Text, nullable=False)
+    interaction_id = Column(String(255), index=True, nullable=True) # Null if cached
+    status = Column(String(50), default="pending")
+    output = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="deep_research_sessions")
