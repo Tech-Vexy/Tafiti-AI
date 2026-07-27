@@ -1,4 +1,5 @@
 from celery import Celery
+
 from app.core.config import settings
 
 celery_app = Celery(
@@ -24,8 +25,9 @@ celery_app.conf.update(
 @celery_app.task(name="process_batch_synthesis")
 def process_batch_synthesis(queries: list, papers: list, user_id: int):
     """Process multiple queries in background"""
-    from app.agents.research_agent import get_research_agent
     import asyncio
+
+    from app.agents.research_agent import get_research_agent
     
     async def process():
         agent = get_research_agent()
@@ -46,7 +48,6 @@ def process_batch_synthesis(queries: list, papers: list, user_id: int):
 @celery_app.task(name="cleanup_old_vectors")
 def cleanup_old_vectors(days: int = 90):
     """Clean up old vector embeddings"""
-    from app.services.vector_service import vector_store
     from datetime import datetime, timedelta
     
     cutoff = datetime.utcnow() - timedelta(days=days)
@@ -57,9 +58,11 @@ def cleanup_old_vectors(days: int = 90):
 @celery_app.task(name="export_user_data")
 def export_user_data(user_id: int, format: str = "json"):
     """Export all user data"""
-    from app.models.database import User, SavedQuery
-    from sqlalchemy import select
     import asyncio
+
+    from sqlalchemy import select
+
+    from app.models.database import SavedQuery
     
     async def export():
         from app.db.session import AsyncSessionLocal
@@ -82,9 +85,11 @@ def export_user_data(user_id: int, format: str = "json"):
 @celery_app.task(name="generate_analytics")
 def generate_analytics():
     """Generate system analytics"""
-    from app.models.database import User, SavedQuery, ResearchSession
-    from sqlalchemy import select, func
     import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.models.database import ResearchSession, SavedQuery, User
     
     async def analyze():
         from app.db.session import AsyncSessionLocal

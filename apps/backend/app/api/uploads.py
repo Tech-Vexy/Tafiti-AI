@@ -1,18 +1,18 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from typing import Dict, Any, List
-from pydantic import BaseModel
-from datetime import datetime
 import io
-import pypdf
+from datetime import datetime
 
-from app.db.session import get_db
-from app.services.pinata_service import get_pinata_service
+import pypdf
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logger import get_logger
 from app.core.security import get_current_user
 from app.core.subscription import require_trial_or_active
-from app.core.logger import get_logger
+from app.db.session import get_db
 from app.models.database import UploadedFile
+from app.services.pinata_service import get_pinata_service
 
 logger = get_logger("uploads_api")
 router = APIRouter()
@@ -58,7 +58,7 @@ async def upload_research_pdf(
             for page in reader.pages:
                 text += page.extract_text() + "\n"
         except Exception as e:
-            logger.error(f"Text extraction failed: {str(e)}")
+            logger.error(f"Text extraction failed: {e!s}")
 
         # 2. Upload to Pinata
         pinata = get_pinata_service()
@@ -83,13 +83,13 @@ async def upload_research_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"PDF upload failed: {str(e)}")
+        logger.error(f"PDF upload failed: {e!s}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await file.close()
 
 
-@router.get("/history", response_model=List[UploadHistoryItem])
+@router.get("/history", response_model=list[UploadHistoryItem])
 async def get_upload_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

@@ -10,22 +10,21 @@ Flow:
    and auto-creates GhostProfile rows for any unrecognised co-authors.
 """
 
-import hashlib
 import secrets
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.database import (
-    User,
+    GhostProfile,
     OrcidProfile,
     OrcidPublication,
-    GhostProfile,
+    User,
 )
 
 logger = get_logger("orcid")
@@ -33,7 +32,7 @@ logger = get_logger("orcid")
 
 # ─── Token Exchange ───────────────────────────────────────────────────────────
 
-async def exchange_code_for_token(code: str) -> Optional[Dict[str, Any]]:
+async def exchange_code_for_token(code: str) -> dict[str, Any] | None:
     """Exchange an ORCID authorisation code for an access token."""
     if not settings.ORCID_CLIENT_ID or not settings.ORCID_CLIENT_SECRET:
         logger.warning("ORCID_CLIENT_ID / ORCID_CLIENT_SECRET not configured")
@@ -67,8 +66,8 @@ async def upsert_orcid_profile(
     user_id: str,
     orcid_id: str,
     access_token: str,
-    refresh_token: Optional[str],
-    expires_in: Optional[int],
+    refresh_token: str | None,
+    expires_in: int | None,
 ) -> OrcidProfile:
     result = await db.execute(
         select(OrcidProfile).where(OrcidProfile.user_id == user_id)
@@ -138,13 +137,13 @@ async def sync_orcid_works(db: AsyncSession, user_id: str, orcid_id: str) -> int
             continue
 
         # DOI
-        doi: Optional[str] = None
+        doi: str | None = None
         for ext_id in (summary.get("external-ids") or {}).get("external-id") or []:
             if ext_id.get("external-id-type") == "doi":
                 doi = (ext_id.get("external-id-value") or "").strip() or None
                 break
 
-        pub_year: Optional[int] = None
+        pub_year: int | None = None
         year_data = (summary.get("publication-date") or {}).get("year") or {}
         year_val = year_data.get("value")
         if year_val:

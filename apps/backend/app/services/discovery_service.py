@@ -1,12 +1,16 @@
 import asyncio
-from typing import List, Optional
 from datetime import datetime
-from app.services.openalex_service import get_openalex_service, get_semantic_scholar_service
-from app.models.schemas import PaperBase, UserDiscoveryResponse
-from app.models.database import User, SearchHistory
-from app.core.logger import get_logger
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logger import get_logger
+from app.models.database import SearchHistory, User
+from app.models.schemas import PaperBase, UserDiscoveryResponse
+from app.services.openalex_service import (
+    get_openalex_service,
+    get_semantic_scholar_service,
+)
 
 logger = get_logger("discovery")
 
@@ -19,9 +23,9 @@ class DiscoveryService:
         self,
         db: AsyncSession,
         current_user_id: str,
-        expertise: List[str],
+        expertise: list[str],
         limit: int = 5
-    ) -> List[UserDiscoveryResponse]:
+    ) -> list[UserDiscoveryResponse]:
         """
         Find other researchers with similar expertise areas.
         """
@@ -63,7 +67,7 @@ class DiscoveryService:
             logger.error(f"Failed to find similar users: {e}")
             return []
 
-    async def get_trending_research(self, career_field: str, limit: int = 15) -> List[PaperBase]:
+    async def get_trending_research(self, career_field: str, limit: int = 15) -> list[PaperBase]:
         """
         Fetch trending papers in a specific field.
         Trending = High citation count in the last 2 years.
@@ -86,7 +90,7 @@ class DiscoveryService:
             logger.error(f"Discovery failed for {career_field}: {e}")
             return []
 
-    async def get_recommended_discovery(self, expertise: List[str], limit: int = 15) -> List[PaperBase]:
+    async def get_recommended_discovery(self, expertise: list[str], limit: int = 15) -> list[PaperBase]:
         """
         Fetch papers based on all expertise areas.
         """
@@ -104,10 +108,10 @@ class DiscoveryService:
         self,
         db: AsyncSession,
         user_id: str,
-        career_field: Optional[str],
-        expertise_areas: List[str],
+        career_field: str | None,
+        expertise_areas: list[str],
         limit: int = 30
-    ) -> List[PaperBase]:
+    ) -> list[PaperBase]:
         """
         Build a personalized paper feed using the user's career field,
         expertise areas, and recent search history. Runs multiple OpenAlex
@@ -116,7 +120,7 @@ class DiscoveryService:
         per_query_limit = min(limit, 20)
 
         # Fetch recent search queries from DB
-        recent_queries: List[str] = []
+        recent_queries: list[str] = []
         try:
             result = await db.execute(
                 select(SearchHistory.query)
@@ -170,7 +174,7 @@ class DiscoveryService:
 
         # Merge and deduplicate
         seen_ids = set()
-        all_papers: List[PaperBase] = []
+        all_papers: list[PaperBase] = []
         for result in results:
             if isinstance(result, Exception):
                 logger.error(f"Personalized feed sub-query failed: {result}")

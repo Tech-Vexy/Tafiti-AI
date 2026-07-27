@@ -1,25 +1,28 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+import traceback
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
-from app.db.session import get_db
-from app.models.database import User, UserSettings, OrcidProfile
-from app.models.schemas import (
-    UserResponse, UserUpdate,
-    UserSettingsResponse, UserSettingsUpdate
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings as app_settings
-from app.core.security import get_current_user
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import OrcidProfile, User, UserSettings
+from app.models.schemas import (
+    UserResponse,
+    UserSettingsResponse,
+    UserSettingsUpdate,
+    UserUpdate,
+)
 from app.services.orcid_service import (
     exchange_code_for_token,
-    upsert_orcid_profile,
     sync_orcid_works,
+    upsert_orcid_profile,
 )
-import traceback
 
 logger = get_logger("auth_api")
 
@@ -72,7 +75,8 @@ async def get_current_user_info(
         # Calculate real-time metrics
         try:
             from sqlalchemy import func
-            from app.models.database import SavedPaper, Note, SavedQuery
+
+            from app.models.database import Note, SavedPaper, SavedQuery
             
             # Citations and Publications count
             papers_result = await db.execute(
@@ -108,10 +112,10 @@ async def get_current_user_info(
         
         return user
     except Exception as e:
-        logger.error(f"Failed to fetch user profile: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Failed to fetch user profile: {e!s}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving user profile: {str(e)}"
+            detail=f"Error retrieving user profile: {e!s}"
         )
 
 

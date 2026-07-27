@@ -1,33 +1,45 @@
-import httpx
-import logging
+import asyncio
 import time
 import traceback
-import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+
+import httpx
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
     from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
     _slowapi_available = True
 except ImportError:
     _slowapi_available = False
 
-from app.core.config import settings
-from app.core.logger import setup_logging, get_logger
-from app.db.session import init_db
 from app.api import (
-    auth, research, queries, recommendation, notes,
-    uploads, billing, social, collaboration, feedback, export,
+    anchors,
+    auth,
+    billing,
+    bounties,
+    collaboration,
+    export,
+    feedback,
+    ghost_profiles,
+    notes,
+    queries,
+    recommendation,
+    research,
+    sandboxes,
+    social,
+    uploads,
 )
-from app.api import ghost_profiles, bounties, sandboxes, anchors
 from app.core.cache import cache
-from app.db.session import AsyncSessionLocal
+from app.core.config import settings
+from app.core.logger import get_logger, setup_logging
+from app.db.session import AsyncSessionLocal, init_db
 from app.models.database import User
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 # Initialize logging
 setup_logging()
@@ -152,7 +164,7 @@ async def add_process_time_header(request: Request, call_next):
         return response
     except Exception as e:
         process_time = time.time() - start_time
-        logger.error(f"Failed processing {request.method} {request.url} in {process_time:.4f}s - Error: {str(e)}")
+        logger.error(f"Failed processing {request.method} {request.url} in {process_time:.4f}s - Error: {e!s}")
         raise e
 
 
@@ -168,7 +180,7 @@ async def custom_http_exception_handler(request: Request, exc):
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     tb = traceback.format_exc()
-    logger.error(f"Unhandled 500 error: {str(exc)}\n{tb}")
+    logger.error(f"Unhandled 500 error: {exc!s}\n{tb}")
     
     # Explicitly add CORS headers to ensure the browser can see the error
     response = JSONResponse(

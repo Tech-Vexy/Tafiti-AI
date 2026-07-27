@@ -7,18 +7,18 @@ Ghost Profiles are auto-created for co-authors discovered during ORCID syncs.
 They become real User accounts once the co-author claims them via an invite link.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime, timedelta
-from typing import List, Optional
-from pydantic import BaseModel, EmailStr
 import secrets
+from datetime import datetime, timedelta
 
-from app.db.session import get_db
-from app.models.database import GhostProfile, User, OrcidProfile
-from app.core.security import get_current_user
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logger import get_logger
+from app.core.security import get_current_user
+from app.db.session import get_db
+from app.models.database import GhostProfile, OrcidProfile
 from app.services.email_service import send_ghost_invite
 
 logger = get_logger("ghost_profiles")
@@ -30,11 +30,11 @@ router = APIRouter()
 class GhostProfileResponse(BaseModel):
     id: str
     display_name: str
-    email: Optional[str] = None
-    orcid_id: Optional[str] = None
-    affiliation: Optional[str] = None
-    co_publication_dois: List[str] = []
-    invite_sent_at: Optional[datetime] = None
+    email: str | None = None
+    orcid_id: str | None = None
+    affiliation: str | None = None
+    co_publication_dois: list[str] = []
+    invite_sent_at: datetime | None = None
     is_claimed: bool = False
 
     class Config:
@@ -50,12 +50,12 @@ class ClaimRequest(BaseModel):
     invite_token: str
     # The Clerk user_id of the person claiming — injected from auth in practice,
     # but accepted in body for flexibility (frontend can pass it explicitly).
-    clerk_user_id: Optional[str] = None
+    clerk_user_id: str | None = None
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
-@router.get("/", response_model=List[GhostProfileResponse])
+@router.get("/", response_model=list[GhostProfileResponse])
 async def list_ghost_profiles(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

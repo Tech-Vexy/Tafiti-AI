@@ -1,6 +1,7 @@
+from typing import Any
+
 import httpx
-import os
-from typing import Dict, Any, Optional
+
 from app.core.config import settings
 from app.core.logger import get_logger
 
@@ -15,7 +16,7 @@ class PaystackService:
             "Content-Type": "application/json",
         }
 
-    async def initialize_transaction(self, email: str, amount_kes: int, callback_url: str) -> Optional[Dict[str, Any]]:
+    async def initialize_transaction(self, email: str, amount_kes: int, callback_url: str) -> dict[str, Any] | None:
         """
         Initialize a Paystack transaction.
         Amount should be in KES. Paystack expect amount in 'kobo' equivalent (cents).
@@ -43,7 +44,7 @@ class PaystackService:
             logger.error(f"Error initializing Paystack transaction: {e}")
             return None
 
-    async def verify_transaction(self, reference: str) -> Optional[Dict[str, Any]]:
+    async def verify_transaction(self, reference: str) -> dict[str, Any] | None:
         """
         Verify a Paystack transaction using its reference.
         """

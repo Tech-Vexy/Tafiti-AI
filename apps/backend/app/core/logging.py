@@ -1,7 +1,8 @@
 import logging
 import sys
-from pathlib import Path
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from pathlib import Path
+
 from pythonjsonlogger import jsonlogger
 
 from app.core.config import settings
@@ -9,7 +10,7 @@ from app.core.config import settings
 
 class CustomJsonFormatter(jsonlogger.JsonFormatter):
     def add_fields(self, log_record, record, message_dict):
-        super(CustomJsonFormatter, self).add_fields(log_record, record, message_dict)
+        super().add_fields(log_record, record, message_dict)
         log_record['level'] = record.levelname
         log_record['logger'] = record.name
         log_record['path'] = record.pathname

@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any
+
+from pydantic import BaseModel
+
 
 class ChatMessage(BaseModel):
     role: str # 'user' or 'assistant'
@@ -7,12 +8,12 @@ class ChatMessage(BaseModel):
 
 class ChatResearchRequest(BaseModel):
     query: str
-    history: List[ChatMessage] = []
-    source_ids: List[str] = [] # User selected paper IDs from library
-    uploaded_text: Optional[str] = None # Text extracted from uploaded files
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    history: list[ChatMessage] = []
+    source_ids: list[str] = [] # User selected paper IDs from library
+    uploaded_text: str | None = None # Text extracted from uploaded files
+    provider: str | None = None
+    model: str | None = None
 
 class ChatResearchResponse(BaseModel):
     answer: str
-    sources_used: List[str]
+    sources_used: list[str]

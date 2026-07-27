@@ -1,6 +1,6 @@
-from typing import List, Dict, Any
 from app.agents.research_agent import get_research_agent
 from app.core.logger import logger
+
 
 class RecommendationService:
     def __init__(self):
@@ -8,10 +8,10 @@ class RecommendationService:
 
     async def generate_topics(
         self,
-        interests: List[str],
+        interests: list[str],
         career_field: str,
-        recent_queries: List[str] = None
-    ) -> List[Dict[str, str]]:
+        recent_queries: list[str] = None
+    ) -> list[dict[str, str]]:
         """
         Generate research topic recommendations based on interests, career field,
         and optionally the user's recent search history for better personalization.

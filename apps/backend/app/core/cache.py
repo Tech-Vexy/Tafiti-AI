@@ -1,15 +1,16 @@
-import redis.asyncio as aioredis
-from typing import Optional, Any
+import hashlib
 import json
 from functools import wraps
-import hashlib
+from typing import Any
+
+import redis.asyncio as aioredis
 
 from app.core.config import settings
 
 
 class RedisCache:
     def __init__(self):
-        self.redis: Optional[aioredis.Redis] = None
+        self.redis: aioredis.Redis | None = None
         self.enabled = bool(settings.REDIS_URL)
     
     async def connect(self):
@@ -24,7 +25,7 @@ class RedisCache:
         if self.redis:
             await self.redis.close()
     
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         if not self.redis:
             return None
         

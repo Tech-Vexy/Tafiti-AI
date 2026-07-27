@@ -1,39 +1,43 @@
+import asyncio
+import json
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
-import asyncio
-import json
 
-from app.db.session import get_db
-from app.models.schemas import (
-    SynthesisRequest, SynthesisResponse,
-    PaperSearchRequest, PaperSearchResponse, PaperBase,
-    SearchHistoryResponse, PaperImpactResponse,
-    GapAnalysisRequest, GapAnalysisResponse,
-    CitationGraphResponse
-)
-from app.models.schemas_chat import ChatMessage, ChatResearchRequest
-from app.services.openalex_service import (
-    get_openalex_service,
-    get_semantic_scholar_service,
-    get_arxiv_service,
-    get_core_service,
-    get_elsevier_service,
-    get_pubmed_service,
-    get_doaj_service,
-    get_ajol_service,
-    get_africarxiv_service,
-)
+from app.agents.critic_agent import ValidatedSynthesis, validated_synthesis
 from app.agents.research_agent import get_research_agent
-from app.agents.critic_agent import validated_synthesis, ValidatedSynthesis
-from app.services.vector_service import vector_store
+from app.core.logger import get_logger
 from app.core.security import get_current_user
 from app.core.subscription import require_trial_or_active
+from app.db.session import get_db
 from app.models.database import ResearchSession, SearchHistory
-from datetime import datetime
-import time
-from app.core.logger import get_logger
+from app.models.schemas import (
+    CitationGraphResponse,
+    GapAnalysisRequest,
+    GapAnalysisResponse,
+    PaperBase,
+    PaperImpactResponse,
+    PaperSearchRequest,
+    PaperSearchResponse,
+    SearchHistoryResponse,
+    SynthesisRequest,
+    SynthesisResponse,
+)
+from app.models.schemas_chat import ChatResearchRequest
+from app.services.openalex_service import (
+    get_africarxiv_service,
+    get_ajol_service,
+    get_arxiv_service,
+    get_core_service,
+    get_doaj_service,
+    get_elsevier_service,
+    get_openalex_service,
+    get_pubmed_service,
+    get_semantic_scholar_service,
+)
+from app.services.vector_service import vector_store
 
 logger = get_logger("research_api")
 router = APIRouter()
@@ -273,7 +277,7 @@ async def synthesize_streaming(
             ):
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
         except Exception as e:
-            logger.error(f"Streaming synthesis failed for '{synth_request.query}': {str(e)}")
+            logger.error(f"Streaming synthesis failed for '{synth_request.query}': {e!s}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
             logger.info(f"Streaming synthesis for '{synth_request.query}' finished")
@@ -335,7 +339,7 @@ async def collaborate_synthesis(
                 await db.commit()
                 
         except Exception as e:
-            logger.error(f"Collaborative synthesis failed: {str(e)}")
+            logger.error(f"Collaborative synthesis failed: {e!s}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
             # Generate and stream follow-up questions at the end
@@ -371,7 +375,7 @@ async def get_paper_details(
     return paper
 
 
-@router.get("/papers/{paper_id}/related", response_model=List[PaperBase])
+@router.get("/papers/{paper_id}/related", response_model=list[PaperBase])
 async def get_related_papers(
     paper_id: str,
     request: Request,
@@ -422,8 +426,9 @@ async def explain_paper_impact(
     _gate: dict = Depends(require_trial_or_active),
     db: AsyncSession = Depends(get_db)
 ):
-    from app.models.database import User
     from sqlalchemy import select
+
+    from app.models.database import User
     
     # Get user career field
     result = await db.execute(select(User).where(User.id == current_user["user_id"]))
@@ -460,8 +465,9 @@ async def chat_research_streaming(
     # Fetch local sources if IDs provided
     local_papers = []
     if chat_request.source_ids:
-        from app.models.database import SavedPaper
         from sqlalchemy import select
+
+        from app.models.database import SavedPaper
         
         result = await db.execute(
             select(SavedPaper).where(
@@ -493,7 +499,7 @@ async def chat_research_streaming(
             ):
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
         except Exception as e:
-            logger.error(f"Chat research failed: {str(e)}")
+            logger.error(f"Chat research failed: {e!s}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
@@ -546,7 +552,7 @@ async def run_gap_analysis(
     )
 
 
-@router.get("/history", response_model=List[SearchHistoryResponse])
+@router.get("/history", response_model=list[SearchHistoryResponse])
 async def get_search_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

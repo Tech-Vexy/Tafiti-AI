@@ -15,11 +15,8 @@ This agent is used by the /research/synthesize/validated endpoint.
 
 from __future__ import annotations
 
-import re
-from typing import List, Optional
-
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -35,15 +32,15 @@ class CitationCheck(BaseModel):
     claim: str               # the sentence that made this citation
     supported: bool          # does the source text support the claim?
     confidence: float = Field(ge=0.0, le=1.0)
-    note: Optional[str] = None   # critic's note if unsupported
+    note: str | None = None   # critic's note if unsupported
 
 
 class ValidatedSynthesis(BaseModel):
     draft: str                           # full synthesis text (may include [FLAGGED] markers)
-    citations: List[CitationCheck] = []
+    citations: list[CitationCheck] = []
     flagged_count: int = 0
     overall_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    critique_summary: Optional[str] = None
+    critique_summary: str | None = None
 
 
 # ─── Agents ───────────────────────────────────────────────────────────────────
@@ -78,8 +75,8 @@ def _build_critic_agent() -> Agent[None, ValidatedSynthesis]:
 
 
 # Singletons built lazily
-_drafter: Optional[Agent] = None
-_critic: Optional[Agent] = None
+_drafter: Agent | None = None
+_critic: Agent | None = None
 
 
 def get_drafter() -> Agent:
@@ -98,7 +95,7 @@ def get_critic() -> Agent:
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
-def _build_context_block(papers: List[PaperBase]) -> str:
+def _build_context_block(papers: list[PaperBase]) -> str:
     parts = []
     for i, p in enumerate(papers, 1):
         authors = ", ".join(p.authors) if p.authors else "Unknown"
@@ -113,7 +110,7 @@ def _build_context_block(papers: List[PaperBase]) -> str:
 
 async def validated_synthesis(
     query: str,
-    papers: List[PaperBase],
+    papers: list[PaperBase],
     output_language: str = "English",
 ) -> ValidatedSynthesis:
     """

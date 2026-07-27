@@ -5,14 +5,14 @@ Renders a research synthesis as a two-column academic PDF using WeasyPrint.
 Falls back to plain-text PDF if WeasyPrint is unavailable.
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import datetime
 
-from app.core.security import get_current_user
 from app.core.logger import get_logger
+from app.core.security import get_current_user
 
 logger = get_logger("export_api")
 router = APIRouter()
@@ -21,8 +21,8 @@ router = APIRouter()
 class ExportRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
     synthesis: str = Field(..., min_length=1)
-    query: Optional[str] = None
-    authors: List[str] = []
+    query: str | None = None
+    authors: list[str] = []
     language: str = "English"
 
 

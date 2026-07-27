@@ -1,15 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import List
 import logging
 
-from app.db.session import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import get_current_user
-from app.models.database import User, ResearchProject, ProjectMember, ProjectActivity, Notification
+from app.db.session import get_db
+from app.models.database import (
+    Notification,
+    ProjectActivity,
+    ProjectMember,
+    ResearchProject,
+    User,
+)
 from app.models.schemas import (
-    ProjectCreate, ProjectResponse, ProjectMemberResponse, 
-    ProjectActivityResponse, ProjectInviteRequest
+    ProjectActivityResponse,
+    ProjectCreate,
+    ProjectInviteRequest,
+    ProjectResponse,
 )
 
 router = APIRouter()
@@ -51,7 +59,7 @@ async def create_project(
     await db.refresh(project)
     return project
 
-@router.get("/projects", response_model=List[ProjectResponse])
+@router.get("/projects", response_model=list[ProjectResponse])
 async def list_projects(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -265,7 +273,7 @@ async def invite_by_email(
     return {"status": "invite_sent", "email": email}
 
 
-@router.get("/projects/{project_id}/activity", response_model=List[ProjectActivityResponse])
+@router.get("/projects/{project_id}/activity", response_model=list[ProjectActivityResponse])
 async def get_project_activity(
     project_id: int,
     current_user: dict = Depends(get_current_user),
