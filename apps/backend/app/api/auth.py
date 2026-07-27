@@ -97,6 +97,58 @@ async def get_current_user_info(
             user.publications_count = int(publications_count)
             user.interest_score = queries_count + notes_count
             user.notification_count = unread_count
+            # ⚡ Bolt: Batch sequential database queries using scalar subqueries.
+            # Reduces 4 separate database round-trips into a single select statement,
+            # improving API latency for the core `/me` profile endpoint.
+            sq_publications = select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery()
+            sq_citations = select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery()
+            sq_queries = select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery()
+            sq_notes = select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery()
+            sq_notifications = select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery()
+
+            metrics_result = await db.execute(
+                select(
+                    sq_publications,
+                    sq_citations,
+                    sq_queries,
+                    sq_notes,
+                    sq_notifications
+                )
+            )
+            row = metrics_result.fetchone()
+
+            publications_count = row[0] if row and row[0] is not None else 0
+            total_citations = row[1] if row and row[1] is not None else 0
+            queries_count = row[2] if row and row[2] is not None else 0
+            notes_count = row[3] if row and row[3] is not None else 0
+            unread_count = row[4] if row and row[4] is not None else 0
+            
+            user.citation_count = int(total_citations)
+            user.publications_count = int(publications_count)
+            user.interest_score = (queries_count or 0) + (notes_count or 0)
+            user.notification_count = unread_count or 0
+            from app.models.database import Notification
+
+            metrics_query = select(
+                select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery().label("publications_count"),
+                select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery().label("total_citations"),
+                select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery().label("queries_count"),
+                select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery().label("notes_count"),
+                select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery().label("unread_count")
+            )
+            metrics_result = await db.execute(metrics_query)
+            metrics_row = metrics_result.fetchone()
+
+            if metrics_row:
+                user.publications_count = int(metrics_row.publications_count or 0)
+                user.citation_count = int(metrics_row.total_citations or 0)
+                user.interest_score = int((metrics_row.queries_count or 0) + (metrics_row.notes_count or 0))
+                user.notification_count = int(metrics_row.unread_count or 0)
+            else:
+                user.publications_count = 0
+                user.citation_count = 0
+                user.interest_score = 0
+                user.notification_count = 0
         except Exception as metrics_error:
             logger.error(f"Error calculating metrics for user {user.id}: {metrics_error}")
             # Ensure attributes exist even if query fails
