@@ -104,6 +104,28 @@ async def get_current_user_info(
             user.publications_count = int(publications_count)
             user.interest_score = (queries_count or 0) + (notes_count or 0)
             user.notification_count = unread_count or 0
+            from app.models.database import Notification
+
+            metrics_query = select(
+                select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery().label("publications_count"),
+                select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery().label("total_citations"),
+                select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery().label("queries_count"),
+                select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery().label("notes_count"),
+                select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery().label("unread_count")
+            )
+            metrics_result = await db.execute(metrics_query)
+            metrics_row = metrics_result.fetchone()
+
+            if metrics_row:
+                user.publications_count = int(metrics_row.publications_count or 0)
+                user.citation_count = int(metrics_row.total_citations or 0)
+                user.interest_score = int((metrics_row.queries_count or 0) + (metrics_row.notes_count or 0))
+                user.notification_count = int(metrics_row.unread_count or 0)
+            else:
+                user.publications_count = 0
+                user.citation_count = 0
+                user.interest_score = 0
+                user.notification_count = 0
         except Exception as metrics_error:
             logger.error(f"Error calculating metrics for user {user.id}: {metrics_error}")
             # Ensure attributes exist even if query fails
