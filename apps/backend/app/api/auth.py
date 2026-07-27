@@ -74,6 +74,29 @@ async def get_current_user_info(
             from sqlalchemy import func
             from app.models.database import SavedPaper, Note, SavedQuery, Notification
             
+            # ⚡ Bolt Optimization: Batching sequential metric queries into a single database call using scalar_subquery().
+            # Expected Impact: Reduces database roundtrips from 4 to 1, significantly improving the response time of the /me endpoint.
+            stmt = select(
+                select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery().label("publications_count"),
+                select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery().label("total_citations"),
+                select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery().label("queries_count"),
+                select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery().label("notes_count"),
+                select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery().label("unread_count")
+            )
+            
+            result = await db.execute(stmt)
+            row = result.fetchone()
+            
+            publications_count = row.publications_count if row and row.publications_count is not None else 0
+            total_citations = row.total_citations if row and row.total_citations is not None else 0
+            queries_count = row.queries_count or 0
+            notes_count = row.notes_count or 0
+            unread_count = row.unread_count or 0
+            
+            user.citation_count = int(total_citations)
+            user.publications_count = int(publications_count)
+            user.interest_score = queries_count + notes_count
+            user.notification_count = unread_count
             # ⚡ Bolt: Batch sequential database queries using scalar subqueries.
             # Reduces 4 separate database round-trips into a single select statement,
             # improving API latency for the core `/me` profile endpoint.
