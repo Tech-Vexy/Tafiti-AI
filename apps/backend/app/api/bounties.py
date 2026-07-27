@@ -221,6 +221,18 @@ async def list_bounties(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Performance Optimization:
+    # Batch member counts using a scalar subquery instead of performing N+1
+    # db queries inside the loop over bounties.
+    count_subquery = (
+        select(func.count(BountySubmission.id))
+        .where(BountySubmission.bounty_id == Bounty.id)
+        .correlate(Bounty)
+        .scalar_subquery()
+    )
+
+    result = await db.execute(
+        select(Bounty, count_subquery.label("submission_count"))
     # Optimization: Replaced N+1 queries using scalar_subquery to batch submission count calculation
     # Expected impact: Reduced database roundtrips and memory bloat from looping over bounties
     # Performance Optimization: Avoid N+1 queries and loading all submissions into memory.
