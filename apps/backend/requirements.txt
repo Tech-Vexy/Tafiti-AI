@@ -43,3 +43,5 @@ agno
 google-genai
 a2ui
 ag-ui-protocol
+ddgs
+arxiv
