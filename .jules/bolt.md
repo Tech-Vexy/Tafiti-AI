@@ -1,3 +1,7 @@
+## 2026-06-19 - N+1 Memory Bloat Anti-Pattern using `len(result.scalars().all())`
+**Learning:** Found a critical and recurring performance anti-pattern in the backend API layer (`sandboxes.py` and `bounties.py`). When fetching lists of entities (like sandboxes or bounties), the application was executing N+1 queries by looping over results and doing a `select()` for related child items (like members or submissions). Even worse, it was loading all the child records into memory with `.all()` and calling Python's `len()` just to get a count, instead of doing an efficient SQL `COUNT`. This causes huge unnecessary memory pressure and drastically slower request times, particularly for entities with many children.
+
+**Action:** Whenever counting related records in a list API response, use `scalar_subquery()` with `func.count()` built directly into the main `select()` statement to fetch everything in a single, DB-optimized roundtrip without loading full objects into application memory.
 ## 2024-05-24 - Avoid `len(result.scalars().all())` for database counts
 **Learning:** A common performance anti-pattern was found where row counts were being calculated in memory by loading all entities and calling `len(result.scalars().all())`. Inside a loop, this causes severe N+1 query and memory issues.
 **Action:** Replace `len(result.scalars().all())` with an explicit `func.count()` query. When counting related entities in a list API response, use a `scalar_subquery()` correlated to the parent entity to fetch counts in a single batched query alongside the parent objects.
