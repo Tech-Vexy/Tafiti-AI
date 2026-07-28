@@ -11,6 +11,7 @@ import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -129,6 +130,15 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # PERFORMANCE OPTIMIZATION: Resolves N+1 query and memory inefficiency.
+    # Previously, this executed 1 query for memberships, and then 2 queries
+    # per sandbox (one to fetch sandbox, one to fetch ALL members to count them).
+    # Using a scalar_subquery with func.count() allows us to fetch everything
+    # in a single query and prevents loading entire objects into memory just for a count.
+    sm_count_alias = aliased(SandboxMember)
+    subquery = (
+        select(func.count(sm_count_alias.id))
+        .where(sm_count_alias.sandbox_id == InstitutionalSandbox.id)
     # ⚡ Bolt Optimization: Use scalar_subquery with func.count() to avoid N+1 query loops.
     # Prevents executing a separate `len(count_result.scalars().all())` count query for every sandbox.
     member_count_subq = (
@@ -141,6 +151,16 @@ async def list_my_sandboxes(
         .scalar_subquery()
     )
 
+    query = (
+        select(InstitutionalSandbox, subquery.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    out = []
     result = await db.execute(
         select(InstitutionalSandbox, member_count_subq)
         .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
@@ -247,6 +267,9 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # PERFORMANCE OPTIMIZATION: Replaced len(result.scalars().all()) with
+    # direct func.count() query to prevent loading all SandboxMember
+    # objects into memory just to get the count.
     # ⚡ Bolt Optimization: Use func.count() directly instead of loading all objects just to count them
     # Bolt Optimization: Prevent memory bloat from loading all records to count
     count_result = await db.execute(
