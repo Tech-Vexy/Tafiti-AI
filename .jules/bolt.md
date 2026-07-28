@@ -1,3 +1,6 @@
+## 2024-06-30 - N+1 and len(all()) Anti-Patterns in SQLAlchemy 2.0 Async
+**Learning:** Found multiple instances where record counts were calculated using `len(result.scalars().all())` which either leads to inefficient N+1 queries in loops or simply fetches entirely too much data for a basic count operation. With SQLAlchemy 2.0 Async, running multiple asynchronous count queries in parallel (e.g. `asyncio.gather()`) isn't supported on the same connection.
+**Action:** When calculating counts inside a loop (like members in a sandbox, submissions in a bounty), use a `scalar_subquery` with `.correlate(ParentModel)` to batch counts directly inside the parent query to eliminate N+1. For single queries, explicitly use `select(func.count()).select_from(Model)` via `.scalar()` rather than counting retrieved objects in memory.
 ## 2024-07-29 - N+1 Query in Counting related records
 **Learning:** Found an N+1 query problem using a loop to count sub-records: `len(result.scalars().all())` which triggers one SQL query per iteration. This applies to Sandbox and Bounty APIs where counts of related items are appended to each record in a loop.
 **Action:** Replace `len(sub_count_res.scalars().all())` with an aggregate subquery using `select(func.count()).where(...)` or batched requests, to fetch the count directly from the database without loading all models into memory.
