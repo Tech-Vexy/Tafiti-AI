@@ -1,3 +1,6 @@
+## 2024-07-29 - N+1 Query in Counting related records
+**Learning:** Found an N+1 query problem using a loop to count sub-records: `len(result.scalars().all())` which triggers one SQL query per iteration. This applies to Sandbox and Bounty APIs where counts of related items are appended to each record in a loop.
+**Action:** Replace `len(sub_count_res.scalars().all())` with an aggregate subquery using `select(func.count()).where(...)` or batched requests, to fetch the count directly from the database without loading all models into memory.
 ## 2026-06-28 - Optimize SQLAlchemy Count and N+1 Queries
 **Learning:** Calculating record counts using `len(result.scalars().all())` leads to N+1 queries in loops. The backend AsyncSession implementation does not support concurrent parallel queries on the same connection, so we should batch them using `scalar_subquery()` and `.correlate()` within a single statement.
 **Action:** Always use `select(func.count())` and `scalar_subquery()` for fetching associated counts instead of fetching all records in loops.
