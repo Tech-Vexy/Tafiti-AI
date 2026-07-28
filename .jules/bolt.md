@@ -1,3 +1,7 @@
+## $(date +%Y-%m-%d) - Optimize SQLAlchemy Count Queries
+
+**Learning:** Calculating record counts using `len(result.scalars().all())` is an anti-pattern because it retrieves all records from the database into memory and leads to N+1 queries when used inside loops.
+**Action:** Replace `len(result.scalars().all())` with `select(func.count())` and `.scalar_one()` for single queries. For loops, consider using `scalar_subquery()` or at least updating the inner loop queries to be `select(func.count(...)).scalar_one()` to avoid loading all objects into memory.
 ## 2024-06-23 - Optimize N+1 issues and auto-correlation problems in SQLAlchemy count queries
 **Learning:** In loops or single fetch queries, using `len(result.scalars().all())` results in inefficient execution and N+1 query problems. Replacing this with `.scalar_subquery()` incorporating `func.count()`, along with `.correlate()` (using `aliased` if joining the same table), correctly batches the operation into a single database query and prevents SQLAlchemy auto-correlation issues.
 **Action:** Always prefer using `func.count(...)` with `.scalar_subquery()` or `.scalar_one()` for counting database records in SQLAlchemy over fetching all records into application memory to check their length.
