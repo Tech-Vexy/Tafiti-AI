@@ -1,3 +1,6 @@
+## 2025-02-20 - [SQLAlchemy Query Performance Optimization]
+**Learning:** Avoid `len(result.scalars().all())` within a loop as it leads to N+1 query overhead in database fetching.
+**Action:** When a count is needed alongside parent data (e.g. counting SandboxMember for each InstitutionalSandbox), formulate the subquery using `func.count(Model.id)` and `.scalar_subquery()`, and remember to `.correlate(ParentModel)` to integrate it into the parent query correctly, returning a single query that calculates the count natively in PostgreSQL. For singular queries, use `.scalar_one()` rather than loading all objects into Python.
 ## 2024-05-18 - Avoid Memory Bloat and N+1 Queries with SQLAlchemy `scalar_subquery`
 **Learning:** Calculating record counts using `len(result.scalars().all())` inside loops leads to N+1 database queries and significant memory bloat, as it fetches all related records into memory just to count them.
 **Action:** When counting related records alongside a list fetch, batch the queries using `scalar_subquery()` combined with `func.count()`. For individual count queries, use `select(func.count())` and fetch the integer using `scalar_one()` instead of loading the object scalar list.
