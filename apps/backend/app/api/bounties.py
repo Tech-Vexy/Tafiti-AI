@@ -290,6 +290,13 @@ async def list_bounties(
     rows = result.all()
 
     out = []
+    for b in bounties:
+        # ⚡ Bolt Optimization: Calculate count natively in SQL to avoid loading submission records
+        # Expected Impact: Prevents memory OOM for bounties with large numbers of submissions
+        count = await db.scalar(
+            select(func.count()).select_from(BountySubmission).where(BountySubmission.bounty_id == b.id)
+        )
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
     result = await db.execute(stmt)
     rows = result.all()
 
