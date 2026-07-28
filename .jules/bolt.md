@@ -1,3 +1,6 @@
+## 2024-06-23 - Optimize N+1 issues and auto-correlation problems in SQLAlchemy count queries
+**Learning:** In loops or single fetch queries, using `len(result.scalars().all())` results in inefficient execution and N+1 query problems. Replacing this with `.scalar_subquery()` incorporating `func.count()`, along with `.correlate()` (using `aliased` if joining the same table), correctly batches the operation into a single database query and prevents SQLAlchemy auto-correlation issues.
+**Action:** Always prefer using `func.count(...)` with `.scalar_subquery()` or `.scalar_one()` for counting database records in SQLAlchemy over fetching all records into application memory to check their length.
 ## 2024-05-24 - SQLAlchemy N+1 Query & `len()` Anti-pattern
 **Learning:** Found instances where calculating nested record counts resulted in N+1 queries. A loop iterates through initial query results, performing a subquery with `len(result.scalars().all())` which loads all nested objects into memory simply to get a count.
 **Action:** When a loop over an async session runs a query, it must be rewritten. Use `.scalar_subquery()` and `func.count()` in the primary query to do all logic in a single batched query, being careful to properly use `.correlate(Model)` to handle SQLAlchemy subquery resolution. Use `result.scalar_one()` for singular lookups.
