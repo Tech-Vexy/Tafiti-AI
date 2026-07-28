@@ -130,6 +130,13 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # Performance optimization: Replace nested loop N+1 queries fetching
+    # individual sandboxes and then their members count using `len(result.scalars().all())`
+    # with a single SQL statement.
+    SandboxMemberAlias = aliased(SandboxMember)
+    member_count_subq = (
+        select(func.count(SandboxMemberAlias.id))
+        .where(SandboxMemberAlias.sandbox_id == InstitutionalSandbox.id)
     # ⚡ BOLT OPTIMIZATION: Replaced N+1 queries in loop with a single query using scalar_subquery
     # Expected impact: Reduces database queries from O(N) to O(1), improving response time significantly.
     member_count_subq = (
@@ -165,6 +172,10 @@ async def list_my_sandboxes(
         .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
         .where(SandboxMember.user_id == current_user["user_id"])
     )
+    sandboxes_with_counts = result.all()
+
+    out = []
+    for sb, count in sandboxes_with_counts:
 
     rows = result.all()
 
@@ -307,6 +318,11 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # Performance optimization: Used explicit DB count instead of loading all models into memory to count list
+    count_result = await db.execute(
+        select(func.count(SandboxMember.id)).where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    count = count_result.scalar()
     # ⚡ Bolt Optimization: Calculate count in database to prevent loading all members into memory
     # Expected Impact: O(1) memory usage instead of O(N) when joining
     count = await db.scalar(
