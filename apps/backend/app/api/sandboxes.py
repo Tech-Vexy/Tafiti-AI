@@ -130,6 +130,11 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # OPTIMIZATION: Resolves N+1 queries. Uses `func.count()` with `scalar_subquery()`
+    # and `.correlate(InstitutionalSandbox)` to retrieve sandboxes and member counts in a single query.
+    # This prevents auto-correlation issues and replaces iterating with DB queries inside a loop.
+    member_count_subq = (
+        select(func.count(SandboxMember.id))
     # PERFORMANCE OPTIMIZATION: Resolves N+1 query and memory inefficiency.
     # Previously, this executed 1 query for memberships, and then 2 queries
     # per sandbox (one to fetch sandbox, one to fetch ALL members to count them).
@@ -151,6 +156,15 @@ async def list_my_sandboxes(
         .scalar_subquery()
     )
 
+    stmt = (
+        select(InstitutionalSandbox, member_count_subq.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    out = []
     query = (
         select(InstitutionalSandbox, subquery.label("member_count"))
         .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
@@ -267,6 +281,8 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # OPTIMIZATION: Resolves inefficient record count query by using `func.count(...)`
+    # and `.scalar_one()` directly instead of fetching all records and using `len(...)`
     # PERFORMANCE OPTIMIZATION: Replaced len(result.scalars().all()) with
     # direct func.count() query to prevent loading all SandboxMember
     # objects into memory just to get the count.
