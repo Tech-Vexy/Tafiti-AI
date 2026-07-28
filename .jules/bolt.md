@@ -1,3 +1,6 @@
+## 2026-06-28 - Optimize SQLAlchemy Count and N+1 Queries
+**Learning:** Calculating record counts using `len(result.scalars().all())` leads to N+1 queries in loops. The backend AsyncSession implementation does not support concurrent parallel queries on the same connection, so we should batch them using `scalar_subquery()` and `.correlate()` within a single statement.
+**Action:** Always use `select(func.count())` and `scalar_subquery()` for fetching associated counts instead of fetching all records in loops.
 ## 2026-06-27 - Backend N+1 Subquery Optimization
 **Learning:** Calculating associated record counts in SQLAlchemy using `len(result.scalars().all())` within loops causes severe N+1 query performance degradation.
 **Action:** When calculating record counts alongside main records, always use `func.count()`, `.scalar_subquery()`, and `.correlate(MainModel)` as a column in the main `select()` statement to fetch everything in a single, batched query. For singular records, use `db.scalar(select(func.count()).select_from(...))`.
