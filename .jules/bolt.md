@@ -1,3 +1,6 @@
+## 2026-06-27 - Backend N+1 Subquery Optimization
+**Learning:** Calculating associated record counts in SQLAlchemy using `len(result.scalars().all())` within loops causes severe N+1 query performance degradation.
+**Action:** When calculating record counts alongside main records, always use `func.count()`, `.scalar_subquery()`, and `.correlate(MainModel)` as a column in the main `select()` statement to fetch everything in a single, batched query. For singular records, use `db.scalar(select(func.count()).select_from(...))`.
 ## 2024-06-26 - Backend N+1 and Memory Issues with list counts
 **Learning:** A common performance anti-pattern in this specific codebase architecture involves calculating relational counts by explicitly fetching all ORM objects and calling `len(result.scalars().all())`. Inside loops (such as API list endpoints), this leads to severe N+1 query execution and high memory overhead for large lists.
 **Action:** Always replace `len(result.scalars().all())` inside loops with single SQL statements that leverage `func.count()`, `.scalar_subquery()`, and explicit `.correlate(MainModel)` (utilising `aliased` for same-table joins) to batch the fetch operation, eliminating the N+1 problem. For singular queries, utilize `select(func.count()).where(...)` and resolve with `.scalar()`.
