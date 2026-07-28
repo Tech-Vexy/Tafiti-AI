@@ -169,6 +169,19 @@ async def list_my_sandboxes(
     rows = result.all()
 
     out = []
+    for m in memberships:
+        sb_result = await db.execute(
+            select(InstitutionalSandbox).where(InstitutionalSandbox.id == m.sandbox_id)
+        )
+        sb = sb_result.scalar_one_or_none()
+        if not sb:
+            continue
+        # ⚡ Bolt Optimization: Use SQL COUNT instead of loading all members into Python memory to count them
+        # Expected Impact: Eliminates N+1 query memory bloat for large sandboxes
+        count = await db.scalar(
+            select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
+        )
+        out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
     stmt = (
         select(InstitutionalSandbox, member_count_subq.label("member_count"))
         .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
@@ -294,6 +307,12 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # ⚡ Bolt Optimization: Calculate count in database to prevent loading all members into memory
+    # Expected Impact: O(1) memory usage instead of O(N) when joining
+    count = await db.scalar(
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    return SandboxResponse(**sandbox.__dict__, member_count=count or 0)
     # ⚡ BOLT OPTIMIZATION: Avoid loading all members into memory just to count them.
     # Expected impact: Reduced memory usage and faster single scalar query execution.
     count = await db.scalar(
