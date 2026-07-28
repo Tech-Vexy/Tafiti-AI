@@ -16,7 +16,7 @@ from pydantic import BaseModel, EmailStr
 import secrets
 
 from app.db.session import get_db
-from app.models.database import GhostProfile, User, OrcidProfile
+from app.models.database import GhostProfile, OrcidProfile
 from app.core.security import get_current_user
 from app.core.logger import get_logger
 from app.services.email_service import send_ghost_invite
