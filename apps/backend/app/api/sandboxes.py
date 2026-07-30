@@ -130,6 +130,10 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # BOLT OPTIMIZATION: Replaced multiple scalar queries and len(scalars().all())
+    # with a single JOIN query containing a scalar subquery for member counts to fix N+1 issue.
+    subq = (
+        select(func.count(SandboxMember.id))
     # ⚡ Bolt Optimization: Use a single query with scalar_subquery to fetch sandboxes and count members, preventing N+1 queries.
     subq = (
         select(func.count(SandboxMember.id))
@@ -195,6 +199,15 @@ async def list_my_sandboxes(
         .correlate(InstitutionalSandbox)
         .scalar_subquery()
     )
+    result = await db.execute(
+        select(InstitutionalSandbox, subq)
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    rows = result.all()
+    out = []
+    for sb, count in rows:
+        out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
 
     result = await db.execute(
         select(InstitutionalSandbox, subq)
@@ -405,6 +418,13 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # BOLT OPTIMIZATION: Replaced len(result.scalars().all()) with func.count()
+    # for faster singular querying that does not pull rows into memory
+    count_result = await db.execute(
+        select(func.count(SandboxMember.id))
+        .where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    count = count_result.scalar() or 0
     # ⚡ Bolt Optimization: Use explicit func.count() to calculate count efficiently in database rather than fetching all rows into memory.
     count = await db.scalar(
         select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
