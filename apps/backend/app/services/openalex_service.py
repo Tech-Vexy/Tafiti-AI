@@ -435,7 +435,7 @@ class ArxivService:
             try:
                 year = int(published[:4])
             except ValueError:
-                pass
+                arxiv_logger.debug("Failed to parse year from published date: %s", published)
 
         return PaperBase(
             id=f"arxiv:{arxiv_id}",
@@ -544,7 +544,7 @@ class COREService:
             try:
                 year = int(str(pub_date)[:4])
             except ValueError:
-                pass
+                core_logger.debug("Failed to parse year from pub_date: %s", pub_date)
         return PaperBase(
             id=f"core:{core_id}",
             title=title,
@@ -634,12 +634,12 @@ class ElsevierService:
             try:
                 year = int(cover_date[:4])
             except ValueError:
-                pass
+                elsevier_logger.debug("Failed to parse year from cover_date: %s", cover_date)
         citations = 0
         try:
             citations = int(entry.get("citedby-count") or 0)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            elsevier_logger.debug("Failed to parse citations: %s", e)
         return PaperBase(
             id=f"scopus:{scopus_id}",
             title=title,
@@ -803,7 +803,7 @@ class PubMedService:
                     try:
                         year = int(year_el.text)
                     except ValueError:
-                        pass
+                        pubmed_logger.debug("Failed to parse year: %s", year_el.text)
 
                 papers.append(PaperBase(
                     id=f"pubmed:{pmid}",
@@ -893,7 +893,7 @@ class DOAJService:
             try:
                 year = int(str(year_raw)[:4])
             except ValueError:
-                pass
+                doaj_logger.debug("Failed to parse year: %s", year_raw)
 
         return PaperBase(
             id=f"doaj:{doaj_id}",
@@ -1000,7 +1000,7 @@ class AJOLService:
             try:
                 year = int(date_str[:4])
             except ValueError:
-                pass
+                ajol_logger.debug("Failed to parse year from date_str: %s", date_str)
 
         record_id = identifier.split(":")[-1].replace("/", "_") if identifier else str(hash(title))
         return PaperBase(
@@ -1126,8 +1126,8 @@ class AfricArXivService:
         if pub_year:
             try:
                 year = int(pub_year)
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                africarxiv_logger.debug("Failed to parse year from publicationYear: %s", e)
 
         return PaperBase(
             id=f"africarxiv:{doi.replace('/', '_')}",
