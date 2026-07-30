@@ -150,7 +150,7 @@ async def sync_orcid_works(db: AsyncSession, user_id: str, orcid_id: str) -> int
             try:
                 pub_year = int(year_val)
             except ValueError:
-                pass
+                logger.warning(f"Invalid publication year format from ORCID: {year_val}")
 
         journal = ((summary.get("journal-title") or {}).get("value") or "").strip() or None
         work_type = summary.get("type") or None
