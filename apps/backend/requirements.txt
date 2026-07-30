@@ -46,3 +46,4 @@ pytest
 pytest-asyncio
 black
 ruff
+google-genai
