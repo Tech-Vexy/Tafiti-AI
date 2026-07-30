@@ -1,3 +1,6 @@
+## 2025-02-09 - N+1 len(scalars()) counts
+**Learning:** Using `len(result.scalars().all())` inside a loop leads to N+1 queries and unnecessary memory allocation by resolving ORM models. It should be optimized using `func.count()`, `.scalar_subquery()`, and explicitly appending `.correlate(MainModel)` to prevent SQLAlchemy auto-correlation issues.
+**Action:** For loops, batch queries using `.scalar_subquery()`. For singular queries, replace with explicit aggregation using `select(func.count()).select_from(...)` via `.scalar()`.
 ## 2024-05-24 - SQLAlchemy Correlated Subquery Optimization
 
 **Learning:** When addressing N+1 query problems in SQLAlchemy where a parent entity needs a count of its children (e.g. `Bounty` -> `BountySubmissions`), using a correlated scalar subquery (`select(func.count()).correlate(Parent).scalar_subquery()`) is significantly faster than using `.scalars().all()` and calling `len()` in python. It keeps the aggregation purely in the database layer.
