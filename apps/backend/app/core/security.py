@@ -5,6 +5,7 @@ from jose import jwt, JWTError
 import time
 import traceback
 
+from app.core.config import settings
 from app.core.logger import get_logger
 
 logger = get_logger("security")
@@ -60,7 +61,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
             token, 
             relevant_key, 
             algorithms=["RS256"],
-            audience=None, # Update if you have an audience set in Clerk
+            audience=settings.CLERK_AUDIENCE,
             issuer=CLERK_ISSUER
         )
         
