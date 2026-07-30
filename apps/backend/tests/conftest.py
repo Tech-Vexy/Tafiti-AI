@@ -5,11 +5,22 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from main import app
 from app.db.session import Base, get_db
-from app.core.config import settings
 
+
+import os
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+# Replace JSONB with JSON for SQLite tests
+if os.environ.get("TESTING") == "1":
+    from sqlalchemy.dialects.sqlite import JSON
+    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy.ext.compiler import compiles
+
+    @compiles(JSONB, "sqlite")
+    def compile_jsonb_sqlite(type_, compiler, **kw):
+        return "JSON"
 
 # Create test engine
 test_engine = create_async_engine(
@@ -73,3 +84,12 @@ def test_paper_data():
         "abstract": "This is a test abstract about machine learning applications.",
         "authors": ["John Doe", "Jane Smith"]
     }
+
+import os
+from sqlalchemy.dialects.postgresql import JSONB
+
+if os.environ.get("TESTING") == "1":
+    from sqlalchemy.ext.compiler import compiles
+    @compiles(JSONB, "sqlite")
+    def compile_jsonb_sqlite(type_, compiler, **kw):
+        return "JSON"
