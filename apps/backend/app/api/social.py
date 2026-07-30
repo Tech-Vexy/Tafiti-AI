@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from typing import List
 
 from app.db.session import get_db
-from app.models.database import User, Connection, Notification
+from app.models.database import Connection, Notification
 from app.models.schemas import ConnectionResponse, NotificationResponse
 from app.core.security import get_current_user
 from app.core.logger import get_logger
@@ -43,7 +43,7 @@ async def connect_to_user(
     notification = Notification(
         user_id=target_user_id,
         type="connection_request",
-        content=f"New connection from a scholar!",
+        content="New connection from a scholar!",
         link=f"/profile/{current_user['user_id']}"
     )
     db.add(notification)
