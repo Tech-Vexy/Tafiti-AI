@@ -116,7 +116,7 @@ Example real scripts from other skills:
 
 def main():
     print("This is an example script for {skill_name}")
-    # TODO: Add actual script logic here
+    # USER TODO: Add actual script logic here
     # This could be data processing, file conversion, API calls, etc.
 
 if __name__ == "__main__":
