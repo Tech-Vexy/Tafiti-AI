@@ -133,6 +133,8 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # ⚡ Bolt Optimization: Use scalar_subquery to eliminate N+1 queries when fetching sandboxes and member counts.
+    sub_count_stmt = (
     # ⚡ Bolt Optimization: Fixed N+1 queries. Used correlated subquery for count
     # and joined SandboxMember to InstitutionalSandbox directly instead of looping.
     # Expected performance impact: Eliminates O(N) database requests per user sandbox list.
@@ -178,6 +180,14 @@ async def list_my_sandboxes(
         .correlate(InstitutionalSandbox)
         .scalar_subquery()
     )
+
+    stmt = (
+        select(InstitutionalSandbox, sub_count_stmt)
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
     result = await db.execute(
         select(InstitutionalSandbox, subq)
         .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
@@ -341,6 +351,8 @@ async def list_my_sandboxes(
 
     rows = result.all()
     out = []
+    for sb, count in rows:
+        out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
     for sb, count in result.all():
     for sb, count in rows:
         out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
@@ -619,6 +631,11 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # ⚡ Bolt Optimization: Replace len(scalars().all()) with explicit aggregation select(func.count()).scalar()
+    count_result = await db.execute(
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    count = count_result.scalar() or 0
     # ⚡ Bolt Optimization: Avoid fetching all records into memory just to count them.
     # Expected performance impact: Substantially lower memory overhead on large sandboxes.
     count_result = await db.execute(
