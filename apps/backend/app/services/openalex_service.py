@@ -1,6 +1,5 @@
 import httpx
 from typing import List, Dict, Any, Optional
-from functools import lru_cache
 import asyncio
 
 from app.core.config import settings
@@ -421,7 +420,6 @@ class ArxivService:
 
     def _parse_atom_entry(self, entry: Dict[str, Any]) -> Optional[PaperBase]:
         """Parse a single Atom feed <entry> element (already converted to dict)."""
-        import xml.etree.ElementTree as ET
         title = entry.get("title", "").replace("\n", " ").strip()
         arxiv_id_url = entry.get("id", "")
         arxiv_id = arxiv_id_url.split("/abs/")[-1].replace("/", "_") if arxiv_id_url else None
@@ -437,7 +435,7 @@ class ArxivService:
             try:
                 year = int(published[:4])
             except ValueError:
-                pass
+                arxiv_logger.debug("Failed to parse year from published date: %s", published)
 
         return PaperBase(
             id=f"arxiv:{arxiv_id}",
@@ -546,7 +544,7 @@ class COREService:
             try:
                 year = int(str(pub_date)[:4])
             except ValueError:
-                pass
+                core_logger.debug("Failed to parse year from pub_date: %s", pub_date)
         return PaperBase(
             id=f"core:{core_id}",
             title=title,
@@ -636,12 +634,12 @@ class ElsevierService:
             try:
                 year = int(cover_date[:4])
             except ValueError:
-                pass
+                elsevier_logger.debug("Failed to parse year from cover_date: %s", cover_date)
         citations = 0
         try:
             citations = int(entry.get("citedby-count") or 0)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            elsevier_logger.debug("Failed to parse citations: %s", e)
         return PaperBase(
             id=f"scopus:{scopus_id}",
             title=title,
@@ -805,7 +803,7 @@ class PubMedService:
                     try:
                         year = int(year_el.text)
                     except ValueError:
-                        pass
+                        pubmed_logger.debug("Failed to parse year: %s", year_el.text)
 
                 papers.append(PaperBase(
                     id=f"pubmed:{pmid}",
@@ -895,7 +893,7 @@ class DOAJService:
             try:
                 year = int(str(year_raw)[:4])
             except ValueError:
-                pass
+                doaj_logger.debug("Failed to parse year: %s", year_raw)
 
         return PaperBase(
             id=f"doaj:{doaj_id}",
@@ -968,7 +966,6 @@ class AJOLService:
         return self._client
 
     def _parse_oai_record(self, record_el: Any, ns: Dict[str, str]) -> Optional[PaperBase]:
-        import xml.etree.ElementTree as ET
 
         header = record_el.find("oai:header", ns)
         if header is None:
@@ -1003,7 +1000,7 @@ class AJOLService:
             try:
                 year = int(date_str[:4])
             except ValueError:
-                pass
+                ajol_logger.debug("Failed to parse year from date_str: %s", date_str)
 
         record_id = identifier.split(":")[-1].replace("/", "_") if identifier else str(hash(title))
         return PaperBase(
@@ -1129,8 +1126,8 @@ class AfricArXivService:
         if pub_year:
             try:
                 year = int(pub_year)
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                africarxiv_logger.debug("Failed to parse year from publicationYear: %s", e)
 
         return PaperBase(
             id=f"africarxiv:{doi.replace('/', '_')}",

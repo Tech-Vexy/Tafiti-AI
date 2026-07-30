@@ -1,5 +1,4 @@
 from fastapi import HTTPException, Request
-from typing import Callable
 import time
 from collections import defaultdict
 import asyncio
