@@ -130,6 +130,26 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # Performance Optimization: eliminate N+1 queries. We calculate the member count
+    # via a scalar subquery and join so we don't have to repeatedly query inside the loop.
+    member_alias = aliased(SandboxMember)
+    member_count_sq = (
+        select(func.count(member_alias.id))
+        .where(member_alias.sandbox_id == InstitutionalSandbox.id)
+        .scalar_subquery()
+        .correlate(InstitutionalSandbox)
+    )
+
+    result = await db.execute(
+        select(InstitutionalSandbox, member_count_sq.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    rows = result.all()
+
+    out = []
+    for sb, count in rows:
+        out.append(SandboxResponse(**sb.__dict__, member_count=count or 0))
     # Optimized: Join SandboxMember and InstitutionalSandbox to avoid N+1 queries,
     # and use a scalar subquery to get the member count.
     sub_count_query = (
@@ -485,6 +505,12 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # Performance Optimization: Explicit aggregation instead of counting ORM objects length
+    count = await db.scalar(
+        select(func.count(SandboxMember.id))
+        .where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    return SandboxResponse(**sandbox.__dict__, member_count=count or 0)
     # Optimized: Explicit aggregation with func.count()
     count_result = await db.execute(
         select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
