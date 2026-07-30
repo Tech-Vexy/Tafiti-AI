@@ -130,6 +130,23 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # BOLT: Replaced N+1 loop with a single joined query using scalar_subquery to compute the member count.
+    # Impact: Reduces queries from 1 + 2N to a single query, significantly improving list load times.
+    subquery = (
+        select(func.count())
+        .select_from(SandboxMember)
+        .where(SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .correlate(InstitutionalSandbox)
+        .scalar_subquery()
+    )
+    result = await db.execute(
+        select(InstitutionalSandbox, subquery)
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+
+    rows = result.all()
+    out = [SandboxResponse(**sb.__dict__, member_count=count) for sb, count in rows]
     # ⚡ Bolt: optimized N+1 query and memory usage by using scalar_subquery
     subq = (
         select(func.count(SandboxMember.user_id))
