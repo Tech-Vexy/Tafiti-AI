@@ -453,6 +453,7 @@ async def list_my_sandboxes(
         count_result = await db.execute(
             select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sb.id)
         )
+        count = count_result.scalar()
         count = count_result.scalar() or 0
         # ⚡ Bolt Optimization: Use explicit func.count() instead of len(result.scalars().all()) to avoid loading all rows into memory (N+1 query issue).
         count = await db.scalar(
@@ -745,6 +746,9 @@ async def join_sandbox(
     # Optimization: Replaced len(result.scalars().all()) with select(func.count())
     # Expected impact: Faster execution time by avoiding fetching all rows into memory to count them
     count_result = await db.execute(
+        select(func.count()).select_from(SandboxMember).where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    count = count_result.scalar()
         select(func.count(SandboxMember.id)).where(SandboxMember.sandbox_id == sandbox.id)
     )
     count = count_result.scalar_one()
