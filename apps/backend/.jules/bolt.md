@@ -1,0 +1,3 @@
+## 2024-03-01 - Avoid Aggregate via memory and N+1 queries using `len(result.scalars().all())`
+**Learning:** Calculating sub-record counts by doing `len(result.scalars().all())` over a loop (N+1 query) is a severe bottleneck, loading entire result sets (all DB objects) into application memory to compute a count. Also, `AsyncSession` implementation does not support parallel queries, so `asyncio.gather()` cannot be used.
+**Action:** Use SQLAlchemy's `scalar_subquery()` together with `func.count()` built into a single batched `select` query to retrieve scalar aggregate metrics directly from the DB.
