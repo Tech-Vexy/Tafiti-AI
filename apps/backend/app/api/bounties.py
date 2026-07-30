@@ -222,6 +222,8 @@ async def list_bounties(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # ⚡ Bolt: optimized N+1 query and memory usage by using scalar_subquery
+    subq = (
     # Performance Optimization: Calculate submission count via scalar subquery
     # to eliminate N+1 queries and avoid fetching full ORM objects just to count them.
     submission_count_sq = (
@@ -316,6 +318,7 @@ async def list_bounties(
         .scalar_subquery()
     )
 
+    stmt = (
     result = await db.execute(
         select(Bounty, sub_count_query)
     result = await db.execute(
@@ -378,6 +381,13 @@ async def list_bounties(
         .order_by(desc(Bounty.created_at))
         .limit(limit)
     )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
     rows = result.all()
 
     out = []
