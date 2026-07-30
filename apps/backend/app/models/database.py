@@ -16,6 +16,38 @@ DB_JSON = JSON if os.environ.get("TESTING") else JSONB
 from app.db.session import Base
 
 
+
+import json
+from sqlalchemy import TypeDecorator
+
+class FlexibleJSONB(TypeDecorator):
+    impl = JSON().with_variant(JSONB, "postgresql")
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (ValueError, TypeError):
+                pass
+        return value
+
+class FlexibleJSON(TypeDecorator):
+    impl = JSON
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (ValueError, TypeError):
+                pass
+        return value
+
 class User(Base):
     __tablename__ = "users"
     
@@ -32,6 +64,7 @@ class User(Base):
     # Academic Profile Fields
     bio = Column(Text, nullable=True)
     university = Column(String(200), nullable=True)
+    expertise_areas = Column(FlexibleJSONB, default=list) # List of strings
     expertise_areas = Column(DB_JSON, default=list) # List of strings
     career_field = Column(String(200), nullable=True)
     citation_count = Column(Integer, default=0)
@@ -82,6 +115,9 @@ class SavedQuery(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(200), nullable=False)
     query = Column(Text, nullable=False)
+    papers = Column(FlexibleJSONB, nullable=False)
+    answer = Column(Text, nullable=False)
+    tags = Column(FlexibleJSONB, default=list)
     papers = Column(DB_JSON, nullable=False)
     answer = Column(Text, nullable=False)
     tags = Column(DB_JSON, default=list)
@@ -106,7 +142,7 @@ class UserSettings(Base):
     llm_model = Column(String(50), nullable=True)
     auto_export = Column(Boolean, default=False)
     export_format = Column(String(20), default="markdown")
-    preferences = Column(JSON, default=dict)
+    preferences = Column(FlexibleJSON, default=dict)
     
     user = relationship("User", back_populates="settings")
 
@@ -132,6 +168,8 @@ class SavedPaper(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     paper_id = Column(String(100), nullable=False) # OpenAlex ID
     title = Column(String(500), nullable=False)
+    filters = Column(FlexibleJSONB, default=dict) # Store search filters
+    authors = Column(FlexibleJSONB, default=list)
     filters = Column(DB_JSON, default=dict) # Store search filters
     authors = Column(DB_JSON, default=list)
     year = Column(Integer)
@@ -148,7 +186,7 @@ class Note(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False, default="")
-    tags = Column(JSON, default=list)
+    tags = Column(FlexibleJSON, default=list)
     project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -294,6 +332,7 @@ class GhostProfile(Base):
     orcid_id = Column(String(30), nullable=True, index=True)
     affiliation = Column(String(300), nullable=True)
     # co-publication context — list of DOIs where this person appears as co-author
+    co_publication_dois = Column(FlexibleJSONB, default=list)
     co_publication_dois = Column(DB_JSON, default=list)
     # once claimed, points to the real user
     claimed_by_user_id = Column(String(50), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
