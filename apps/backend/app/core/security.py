@@ -1,4 +1,4 @@
-from fastapi import HTTPException, Security, status, Depends
+from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import httpx
 from jose import jwt, JWTError
