@@ -1,5 +1,4 @@
 import httpx
-import logging
 import time
 import traceback
 import asyncio
@@ -27,7 +26,7 @@ from app.api import ghost_profiles, bounties, sandboxes, anchors
 from app.core.cache import cache
 from app.db.session import AsyncSessionLocal
 from app.models.database import User
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 # Initialize logging
 setup_logging()
