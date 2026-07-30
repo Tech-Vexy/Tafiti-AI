@@ -1,3 +1,6 @@
+## 2025-07-21 - Optimize record counts in loops using scalar_subquery
+**Learning:** Found instances of N+1 query performance anti-patterns by calculating `len(result.scalars().all())` within a loop, querying child records for parent records returned sequentially. This causes heavy DB load because it pulls entire model objects from the DB instead of executing a count on DB side, and it does so repetitively.
+**Action:** Replace `len(result.scalars().all())` inside a loop with a count optimized directly via `.scalar_subquery()` or explicitly querying counts, avoiding full row hydration and reducing DB roundtrips.
 ## 2024-06-25 - Fix N+1 Query Using Correlated Scalar Subquery
 **Learning:** Using a `for` loop to fetch a count for each returned record results in N+1 queries, creating a severe performance bottleneck. In `apps/backend/app/api/bounties.py:list_bounties`, looping over all bounties and querying `BountySubmission` sequentially caused significant database round trips. A scalar subquery with explicit correlation enables calculating the count directly inside the database efficiently.
 **Action:** Always prefer computing counts at the database level when listing records. Use `select(func.count(RelatedModel.id)).where(...).correlate(BaseModel).scalar_subquery()` and label it inside the primary `select(...)`.
