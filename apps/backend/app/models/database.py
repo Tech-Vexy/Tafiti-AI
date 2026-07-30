@@ -1,11 +1,52 @@
 from datetime import datetime
 import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import JSONB
+import os
+if os.environ.get("TESTING") == "1":
+from sqlalchemy import JSON
+if os.environ.get('TESTING') == '1':
+    JSONB = JSON
+else:
+    from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+import os
+
+DB_JSON = JSON if os.environ.get("TESTING") else JSONB
 
 from app.db.session import Base
 
+
+
+import json
+from sqlalchemy import TypeDecorator
+
+class FlexibleJSONB(TypeDecorator):
+    impl = JSON().with_variant(JSONB, "postgresql")
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (ValueError, TypeError):
+                pass
+        return value
+
+class FlexibleJSON(TypeDecorator):
+    impl = JSON
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (ValueError, TypeError):
+                pass
+        return value
 
 class User(Base):
     __tablename__ = "users"
@@ -23,7 +64,8 @@ class User(Base):
     # Academic Profile Fields
     bio = Column(Text, nullable=True)
     university = Column(String(200), nullable=True)
-    expertise_areas = Column(JSONB, default=list) # List of strings
+    expertise_areas = Column(FlexibleJSONB, default=list) # List of strings
+    expertise_areas = Column(DB_JSON, default=list) # List of strings
     career_field = Column(String(200), nullable=True)
     citation_count = Column(Integer, default=0)
     publications_count = Column(Integer, default=0)
@@ -42,6 +84,7 @@ class User(Base):
     saved_papers = relationship("SavedPaper", back_populates="user", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     research_sessions = relationship("ResearchSession", back_populates="user", cascade="all, delete-orphan")
+    deep_research_sessions = relationship("DeepResearchSession", back_populates="user", cascade="all, delete-orphan")
     search_history = relationship("SearchHistory", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("ResearchProject", back_populates="owner", cascade="all, delete-orphan")
     memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
@@ -72,9 +115,12 @@ class SavedQuery(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(200), nullable=False)
     query = Column(Text, nullable=False)
-    papers = Column(JSONB, nullable=False)
+    papers = Column(FlexibleJSONB, nullable=False)
     answer = Column(Text, nullable=False)
-    tags = Column(JSONB, default=list)
+    tags = Column(FlexibleJSONB, default=list)
+    papers = Column(DB_JSON, nullable=False)
+    answer = Column(Text, nullable=False)
+    tags = Column(DB_JSON, default=list)
     is_favorite = Column(Boolean, default=False)
     vector_id = Column(String(100), nullable=True)
     project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="SET NULL"), nullable=True)
@@ -96,7 +142,7 @@ class UserSettings(Base):
     llm_model = Column(String(50), nullable=True)
     auto_export = Column(Boolean, default=False)
     export_format = Column(String(20), default="markdown")
-    preferences = Column(JSON, default=dict)
+    preferences = Column(FlexibleJSON, default=dict)
     
     user = relationship("User", back_populates="settings")
 
@@ -122,8 +168,10 @@ class SavedPaper(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     paper_id = Column(String(100), nullable=False) # OpenAlex ID
     title = Column(String(500), nullable=False)
-    filters = Column(JSONB, default=dict) # Store search filters
-    authors = Column(JSONB, default=list)
+    filters = Column(FlexibleJSONB, default=dict) # Store search filters
+    authors = Column(FlexibleJSONB, default=list)
+    filters = Column(DB_JSON, default=dict) # Store search filters
+    authors = Column(DB_JSON, default=list)
     year = Column(Integer)
     citations = Column(Integer)
     abstract = Column(Text)
@@ -138,7 +186,7 @@ class Note(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False, default="")
-    tags = Column(JSON, default=list)
+    tags = Column(FlexibleJSON, default=list)
     project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -284,7 +332,8 @@ class GhostProfile(Base):
     orcid_id = Column(String(30), nullable=True, index=True)
     affiliation = Column(String(300), nullable=True)
     # co-publication context — list of DOIs where this person appears as co-author
-    co_publication_dois = Column(JSONB, default=list)
+    co_publication_dois = Column(FlexibleJSONB, default=list)
+    co_publication_dois = Column(DB_JSON, default=list)
     # once claimed, points to the real user
     claimed_by_user_id = Column(String(50), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     invite_sent_at = Column(DateTime, nullable=True)
@@ -420,3 +469,18 @@ class UploadedFile(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", backref="uploaded_files")
+
+class DeepResearchSession(Base):
+    __tablename__ = "deep_research_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    query = Column(Text, nullable=False)
+    interaction_id = Column(String(255), index=True, nullable=True) # Null if cached
+    status = Column(String(50), default="pending")
+    output = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="deep_research_sessions")
