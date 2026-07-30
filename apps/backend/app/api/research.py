@@ -26,6 +26,11 @@ from app.services.openalex_service import (
     get_africarxiv_service,
 )
 from app.agents.research_agent import get_research_agent
+from app.models.schemas import DeepResearchRequest, DeepResearchResponse, DeepResearchStatusResponse
+from app.agents.deep_research_agent import get_deep_research_agent
+from app.models.schemas import DeepResearchValidationResponse
+from app.agents.validation_agent import get_validation_agent
+
 from app.agents.critic_agent import validated_synthesis, ValidatedSynthesis
 from app.services.vector_service import vector_store
 from app.core.security import get_current_user
@@ -36,7 +41,6 @@ from app.core.logger import get_logger
 
 logger = get_logger("research_api")
 router = APIRouter()
-
 
 @router.post("/search", response_model=PaperSearchResponse)
 async def search_papers(
@@ -135,7 +139,6 @@ async def search_papers(
         from_cache=False
     )
 
-
 @router.post("/synthesize", response_model=SynthesisResponse)
 async def synthesize(
     request: Request,
@@ -200,7 +203,6 @@ async def synthesize(
         followup_questions=followup
     )
 
-
 @router.post("/synthesize/validated")
 async def synthesize_validated(
     request: Request,
@@ -233,7 +235,6 @@ async def synthesize_validated(
         "processing_time": processing_time,
         "sources_used": list(range(1, len(synth_request.papers) + 1)),
     }
-
 
 @router.post("/synthesize/stream")
 async def synthesize_streaming(
@@ -292,7 +293,6 @@ async def synthesize_streaming(
         generate(),
         media_type="text/event-stream"
     )
-
 
 @router.post("/synthesize/collaborative")
 async def collaborate_synthesis(
@@ -354,7 +354,6 @@ async def collaborate_synthesis(
         media_type="text/event-stream"
     )
 
-
 @router.get("/papers/{paper_id}")
 async def get_paper_details(
     paper_id: str,
@@ -369,7 +368,6 @@ async def get_paper_details(
     
     return paper
 
-
 @router.get("/papers/{paper_id}/related", response_model=List[PaperBase])
 async def get_related_papers(
     paper_id: str,
@@ -380,7 +378,6 @@ async def get_related_papers(
     openalex = get_openalex_service(client=request.app.state.http_client)
     papers = await openalex.get_related_papers(paper_id, limit=limit)
     return papers
-
 
 @router.get("/papers/{paper_id}/citation-graph", response_model=CitationGraphResponse)
 async def get_citation_graph(
@@ -544,7 +541,6 @@ async def run_gap_analysis(
         processing_time=processing_time,
     )
 
-
 @router.get("/history", response_model=List[SearchHistoryResponse])
 async def get_search_history(
     current_user: dict = Depends(get_current_user),
@@ -559,3 +555,167 @@ async def get_search_history(
         .limit(limit)
     )
     return result.scalars().all()
+
+from sqlalchemy.future import select
+from app.models.database import DeepResearchSession
+import hashlib
+from app.core.cache import cache
+
+@router.post("/deep-research", response_model=DeepResearchResponse)
+async def start_deep_research(
+    request: Request,
+    dr_request: DeepResearchRequest,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Start a deep research task using Gemini interactions API.
+    Returns an interaction ID that can be polled for status.
+    """
+    try:
+        query_hash = hashlib.md5(dr_request.query.encode()).hexdigest()
+        cache_key = f"deep_research:{query_hash}"
+        cached_output = await cache.get(cache_key)
+
+        if cached_output:
+            # Create a DB session marked as completed directly
+            new_session = DeepResearchSession(
+                user_id=current_user["id"],
+                query=dr_request.query,
+                interaction_id="cached_" + query_hash,
+                status="completed",
+                output=cached_output
+            )
+            db.add(new_session)
+            await db.commit()
+            return DeepResearchResponse(
+                interaction_id=new_session.interaction_id,
+                message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
+            )
+
+        agent = get_deep_research_agent()
+        interaction_id = await agent.start_research(
+            query=dr_request.query,
+            mcp_servers=dr_request.mcp_servers
+        )
+
+        # Save to DB
+        new_session = DeepResearchSession(
+            user_id=current_user["id"],
+            query=dr_request.query,
+            interaction_id=interaction_id,
+            status="pending"
+        )
+        db.add(new_session)
+        await db.commit()
+
+        return DeepResearchResponse(
+            interaction_id=interaction_id,
+            message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
+        )
+    except Exception as e:
+        logger.error(f"Error starting deep research: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/deep-research/{interaction_id}", response_model=DeepResearchStatusResponse)
+async def get_deep_research_status(
+    interaction_id: str,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Poll the status of a deep research task.
+    """
+    try:
+        if interaction_id.startswith("cached_"):
+            # Fetch directly from DB
+            stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+            result = await db.execute(stmt)
+            db_session = result.scalars().first()
+            if not db_session:
+                 raise HTTPException(status_code=404, detail="Interaction not found")
+            return DeepResearchStatusResponse(
+                interaction_id=interaction_id,
+                status=db_session.status,
+                output=db_session.output,
+                error=db_session.error
+            )
+
+        agent = get_deep_research_agent()
+        status_info = await agent.get_research_status(interaction_id)
+
+        # Update DB if found
+        stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+        result = await db.execute(stmt)
+        db_session = result.scalars().first()
+
+        if db_session:
+            if status_info["status"] != db_session.status:
+                db_session.status = status_info["status"]
+                if status_info.get("output"):
+                    db_session.output = status_info["output"]
+                    # Cache to Redis
+                    query_hash = hashlib.md5(db_session.query.encode()).hexdigest()
+                    cache_key = f"deep_research:{query_hash}"
+                    await cache.set(cache_key, db_session.output, ttl=86400)
+                if status_info.get("error"):
+                    db_session.error = status_info["error"]
+                await db.commit()
+
+        return DeepResearchStatusResponse(
+            interaction_id=interaction_id,
+            status=status_info["status"],
+            output=status_info.get("output"),
+            error=status_info.get("error")
+        )
+    except Exception as e:
+        logger.error(f"Error polling deep research status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/deep-research/{interaction_id}/validate", response_model=DeepResearchValidationResponse)
+async def validate_deep_research(
+    interaction_id: str,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Validate the output of a completed deep research task.
+    Extracts claims, checks citations, and returns a confidence score.
+    """
+    try:
+        # First get the research output
+        if interaction_id.startswith("cached_"):
+            stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+            result = await db.execute(stmt)
+            db_session = result.scalars().first()
+            if not db_session or db_session.status != "completed":
+                raise HTTPException(status_code=400, detail="Cannot validate incomplete cached research task.")
+            research_text = db_session.output
+        else:
+            dr_agent = get_deep_research_agent()
+            status_info = await dr_agent.get_research_status(interaction_id)
+
+            if status_info["status"] != "completed":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot validate incomplete research task. Current status: {status_info['status']}"
+                )
+
+            research_text = status_info.get("output", "")
+        if not research_text:
+             raise HTTPException(status_code=400, detail="Research task completed but output is empty.")
+
+        # Run validation
+        validation_agent = get_validation_agent()
+        validation_result = await validation_agent.validate_research_output(interaction_id, research_text)
+
+        return validation_result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating deep research: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
