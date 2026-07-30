@@ -1,6 +1,5 @@
 import httpx
 from typing import List, Dict, Any, Optional
-from functools import lru_cache
 import asyncio
 
 from app.core.config import settings
@@ -421,7 +420,6 @@ class ArxivService:
 
     def _parse_atom_entry(self, entry: Dict[str, Any]) -> Optional[PaperBase]:
         """Parse a single Atom feed <entry> element (already converted to dict)."""
-        import xml.etree.ElementTree as ET
         title = entry.get("title", "").replace("\n", " ").strip()
         arxiv_id_url = entry.get("id", "")
         arxiv_id = arxiv_id_url.split("/abs/")[-1].replace("/", "_") if arxiv_id_url else None
@@ -968,7 +966,6 @@ class AJOLService:
         return self._client
 
     def _parse_oai_record(self, record_el: Any, ns: Dict[str, str]) -> Optional[PaperBase]:
-        import xml.etree.ElementTree as ET
 
         header = record_el.find("oai:header", ns)
         if header is None:
