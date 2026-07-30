@@ -1,8 +1,17 @@
 from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from typing import List, Dict, Any, Optional, AsyncIterator, TypedDict, Annotated
+import asyncio
 from langchain_core.messages import HumanMessage, SystemMessage
 from typing import List, Dict, Any, Optional, AsyncIterator
 import json
 import re
+import operator
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
 
 from app.core.config import settings
 from app.models.schemas import PaperBase
@@ -10,6 +19,8 @@ from app.core.logger import get_logger
 
 logger = get_logger("research_agent")
 
+class AgentState(TypedDict):
+    messages: Annotated[list[BaseMessage], add_messages]
 
 class ResearchAgent:
     def __init__(self, provider: str = None, model: str = None):
@@ -44,7 +55,26 @@ class ResearchAgent:
                 openai_api_key=api_key,
                 streaming=True,
             )
-    
+
+        # Initialize the state graph
+        workflow = StateGraph(AgentState)
+
+        # Define the nodes
+        workflow.add_node("agent", self._call_model)
+
+        # Define the edges
+        workflow.add_edge(START, "agent")
+        workflow.add_edge("agent", END)
+
+        # Compile the workflow
+        self.app = workflow.compile()
+
+    async def _call_model(self, state: AgentState):
+        messages = state["messages"]
+        response = await self.llm.ainvoke(messages)
+        # We return a list, because this will get added to the existing list
+        return {"messages": [response]}
+
     def _build_context(self, papers: List[PaperBase]) -> str:
         context = ""
         for i, paper in enumerate(papers, 1):
@@ -105,9 +135,11 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             HumanMessage(content=human_content),
         ]
 
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        async for event in self.app.astream_events({"messages": messages}, version="v2"):
+            if event["event"] == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    yield chunk.content
 
     async def synthesize(
         self,
@@ -125,8 +157,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             HumanMessage(content=human_content),
         ]
 
-        response = await self.llm.agenerate([messages])
-        answer = response.generations[0][0].text
+        state = await self.app.ainvoke({"messages": messages})
+        answer = state["messages"][-1].content
 
         return {
             "answer": answer,
@@ -141,8 +173,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             HumanMessage(content=text)
         ]
         
-        response = await self.llm.agenerate([messages])
-        concepts_text = response.generations[0][0].text
+        state = await self.app.ainvoke({"messages": messages})
+        concepts_text = state["messages"][-1].content
         return [c.strip() for c in concepts_text.split(",")]
     
     async def suggest_follow_up(self, query: str, answer: str) -> List[str]:
@@ -151,8 +183,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             HumanMessage(content=f"Query: {query}\n\nAnswer: {answer[:500]}...")
         ]
         
-        response = await self.llm.agenerate([messages])
-        suggestions_text = response.generations[0][0].text
+        state = await self.app.ainvoke({"messages": messages})
+        suggestions_text = state["messages"][-1].content
         
         suggestions = []
         for line in suggestions_text.split("\n"):
@@ -178,8 +210,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             HumanMessage(content=f"Query: {query}\n\nContext excerpt:\n{context[:1500]}")
         ]
         try:
-            response = await self.llm.agenerate([messages])
-            raw = response.generations[0][0].text.strip()
+            state = await self.app.ainvoke({"messages": messages})
+            raw = state["messages"][-1].content.strip()
             raw = re.sub(r"^```(?:json)?\s*", "", raw)
             raw = re.sub(r"\s*```$", "", raw)
             questions = json.loads(raw)
@@ -229,9 +261,11 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
                 messages.append(AIMessage(content=msg["content"]))
         messages.append(HumanMessage(content=query))
 
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        async for event in self.app.astream_events({"messages": messages}, version="v2"):
+            if event["event"] == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    yield chunk.content
 
     async def collaborate_research_streaming(
         self,
@@ -259,9 +293,11 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             HumanMessage(content=f"Research Question: {query}\n\nCorpus:\n{context}\n\nBegin collaborative analysis:")
         ]
 
-        async for chunk in self.llm.astream(messages):
-            if chunk.content:
-                yield chunk.content
+        async for event in self.app.astream_events({"messages": messages}, version="v2"):
+            if event["event"] == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    yield chunk.content
 
     async def explain_paper_impact(
         self,
@@ -293,8 +329,8 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
             ))
         ]
 
-        response = await self.llm.agenerate([messages])
-        raw = response.generations[0][0].text.strip()
+        state = await self.app.ainvoke({"messages": messages})
+        raw = state["messages"][-1].content.strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
 
@@ -369,8 +405,8 @@ Perform the Gap Analysis and return only the JSON object:"""
             HumanMessage(content=user_prompt),
         ]
 
-        response = await self.llm.agenerate([messages])
-        raw_text = response.generations[0][0].text.strip()
+        state = await self.app.ainvoke({"messages": messages})
+        raw_text = state["messages"][-1].content.strip()
 
         # Strip markdown fences if the LLM wraps in ```json ... ```
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)

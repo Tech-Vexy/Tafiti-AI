@@ -16,6 +16,7 @@ langchain-core
 langchain-openai
 langchain-community
 langchain-google-genai
+langgraph
 openai
 groq
 pydantic-ai-slim[openai,groq,google]
