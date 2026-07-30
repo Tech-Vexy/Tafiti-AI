@@ -1,3 +1,6 @@
+## 2025-02-27 - Optimize SQLAlchemy len(result.scalars().all())
+**Learning:** Using `len(result.scalars().all())` to get record counts causes the database to fetch all records into memory, which is inefficient. Inside loops, this creates N+1 query bottlenecks, heavily degrading performance due to sequential async DB calls not being run in parallel in the current setup.
+**Action:** Always use `.scalar_subquery()` explicitly `.correlate()`d (using `aliased` if joining the same table) for loop queries to avoid N+1 and SQLAlchemy auto-correlation issues. For single queries, use `select(func.count()).select_from(...)` via `.scalar()`.
 ## 2024-07-06 - Optimize SQLAlchemy count in APIs
 **Learning:** Calculating record counts using `len(result.scalars().all())` loads all rows into memory and causes N+1 queries when executed inside loops. For batching, `scalar_subquery()` should be used.
 **Action:** Use `func.count()` with `scalar_subquery()` and explicitly append `.correlate()` to prevent auto-correlation issues for batched operations. For singular counts, use `.scalar(select(func.count()).select_from(...))`.
