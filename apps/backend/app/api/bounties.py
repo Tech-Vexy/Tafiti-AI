@@ -222,6 +222,10 @@ async def list_bounties(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy import func
+    # ⚡ Bolt Optimization: Resolved N+1 query for bounty submissions count
+    # Replaced loop with scalar_subquery to count submissions in one query
+    subq = (
     # ⚡ Bolt Optimization: Fix N+1 query by batching submission counts in a scalar subquery
     subq = (
     # ⚡ Bolt: Optimize N+1 query and memory usage by using a scalar subquery for counts
@@ -299,6 +303,7 @@ async def list_bounties(
 
     result = await db.execute(
     result = await db.execute(
+    result = await db.execute(
         select(Bounty, subq)
 
     result = await db.execute(
@@ -356,6 +361,8 @@ async def list_bounties(
         .order_by(desc(Bounty.created_at))
         .limit(limit)
     )
+    rows = result.all()
+    out = []
 
     out = []
     for b, count in result.all():
