@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from typing import List
 import logging
 
@@ -8,8 +8,7 @@ from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.database import User, ResearchProject, ProjectMember, ProjectActivity, Notification
 from app.models.schemas import (
-    ProjectCreate, ProjectResponse, ProjectMemberResponse, 
-    ProjectActivityResponse, ProjectInviteRequest
+    ProjectCreate, ProjectResponse, ProjectActivityResponse, ProjectInviteRequest
 )
 
 router = APIRouter()
