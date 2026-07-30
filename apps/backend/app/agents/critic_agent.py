@@ -15,11 +15,10 @@ This agent is used by the /research/synthesize/validated endpoint.
 
 from __future__ import annotations
 
-import re
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 
 from app.core.config import settings
 from app.core.logger import get_logger
