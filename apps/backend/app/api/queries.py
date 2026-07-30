@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, desc
 from typing import List
 from datetime import datetime
 import traceback
@@ -100,15 +100,7 @@ async def get_saved_queries(
     )
     queries = result.scalars().all()
     
-    # Defensive fix for JSON serialization issues
-    for q in queries:
-        if isinstance(q.papers, str):
-            try: q.papers = json.loads(q.papers)
-            except: q.papers = []
-        if isinstance(q.tags, str):
-            try: q.tags = json.loads(q.tags)
-            except: q.tags = []
-                
+
     return queries
 
 
@@ -129,18 +121,7 @@ async def get_saved_query(
     if not query:
         raise HTTPException(status_code=404, detail="Query not found")
     
-    # Defensive fix for JSON serialization
-    if isinstance(query.papers, str):
-        try:
-            query.papers = json.loads(query.papers)
-        except:
-            query.papers = []
-    if isinstance(query.tags, str):
-        try:
-            query.tags = json.loads(query.tags)
-        except:
-            query.tags = []
-            
+
     return query
 
 
@@ -251,7 +232,7 @@ async def get_favorites(
         select(SavedQuery)
         .where(
             SavedQuery.user_id == current_user["user_id"],
-            SavedQuery.is_favorite == True
+            SavedQuery.is_favorite
         )
         .order_by(desc(SavedQuery.updated_at))
     )
@@ -304,12 +285,7 @@ async def get_library_papers(
     )
     rows = result.scalars().all()
     
-    # Defensive fix for JSON serialization 
-    for r in rows:
-        if isinstance(r.authors, str):
-            try: r.authors = json.loads(r.authors)
-            except: r.authors = []
-            
+
     return [
         PaperBase(
             id=r.paper_id,
