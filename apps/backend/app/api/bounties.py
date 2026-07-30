@@ -356,6 +356,10 @@ async def list_bounties(
 
     out = []
     for b in bounties:
+        # ⚡ Bolt Optimization: Use explicit func.count() instead of len(result.scalars().all()) to avoid loading all rows into memory in a loop.
+        count = await db.scalar(
+            select(func.count()).select_from(BountySubmission).where(BountySubmission.bounty_id == b.id)
+        )
         # ⚡ Bolt: Use func.count() to avoid loading all submission objects into memory
         sub_count_res = await db.execute(
             select(func.count(BountySubmission.id)).where(BountySubmission.bounty_id == b.id)
