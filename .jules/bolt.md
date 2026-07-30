@@ -1,3 +1,6 @@
+## 2025-02-18 - [Optimize N+1 Query in Sandbox Members Route]
+**Learning:** In the `get_members` route in `sandboxes.py`, iterating over `SandboxMember` results to fetch `User` objects one by one causes a severe N+1 query issue, increasing execution time proportionally with member count.
+**Action:** Always use SQLAlchemy's `joinedload` (or similar eager loading options like `selectinload` for collections) when returning a collection of objects that need their relationships loaded. This reduces multiple individual DB requests to a single combined request via a JOIN, improving performance drastically (e.g., from 0.0715s to 0.0038s, an ~94% improvement on 50 members).
 ## 2025-02-20 - N+1 Query Anti-Pattern in Backend (SQLAlchemy)
 **Learning:** Calculating record counts by fetching all objects with `.scalars().all()` and calling `len()` causes severe N+1 queries in loops and unneeded memory usage.
 **Action:** Use `func.count()` with `scalar_subquery()` and explicitly `.correlate()` it in SQLAlchemy queries. For single queries, just aggregate directly and `.scalar()`.
