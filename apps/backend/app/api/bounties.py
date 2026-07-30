@@ -8,7 +8,8 @@ Payment is processed via Paystack (KES).
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
+from sqlalchemy.orm import aliased
 from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -221,20 +222,326 @@ async def list_bounties(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # ⚡ Bolt Optimization: Use scalar_subquery to count submissions in a single query
+    # rather than N+1 queries using len(result.scalars().all()) inside a loop.
+    subq = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # Performance Optimization: Calculate submission count inline to avoid N+1 queries.
+    subq = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # ⚡ Bolt: Fix N+1 query issue for counting bounty submissions
+    subq = (
+    # Use a correlated scalar subquery to fetch submission count efficiently
+    # instead of issuing an N+1 query and counting results in python.
+    subq = (
+    # Bolt Optimization: Use scalar_subquery to count submissions and avoid N+1 queries.
+    submission_count_subq = (
+    # ⚡ Bolt Optimization: Resolved N+1 queries by using a correlated scalar subquery
+    # to count submissions in the same query as fetching bounties.
+    sub_count_sq = (
+    # BOLT: Replaced N+1 loop computing submissions by using a scalar_subquery correlated to the bounty query.
+    # Impact: Combines 1 + N queries into 1, eliminating database roundtrips when displaying bounties.
+    subquery = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # ⚡ Bolt: optimized N+1 query and memory usage by using scalar_subquery
+    subq = (
+    # Performance Optimization: Calculate submission count via scalar subquery
+    # to eliminate N+1 queries and avoid fetching full ORM objects just to count them.
+    submission_count_sq = (
+        select(func.count(BountySubmission.id))
+        .where(BountySubmission.bounty_id == Bounty.id)
+        .scalar_subquery()
+        .correlate(Bounty)
+    )
+
     result = await db.execute(
-        select(Bounty)
+        select(Bounty, submission_count_sq.label("submission_count"))
+    # Optimized: Use scalar subquery to avoid N+1 queries for submission count
+    sub_count_query = (
+        select(func.count())
+        .select_from(BountySubmission)
+    from sqlalchemy import func
+    # ⚡ Bolt Optimization: Resolved N+1 query for bounty submissions count
+    # Replaced loop with scalar_subquery to count submissions in one query
+    subq = (
+    # ⚡ Bolt Optimization: Fix N+1 query by batching submission counts in a scalar subquery
+    subq = (
+    # ⚡ Bolt: Optimize N+1 query and memory usage by using a scalar subquery for counts
+    subq = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # ⚡ Bolt: Mitigation of N+1 queries. Used scalar_subquery with func.count and .correlate()
+    # to fetch bounties and their submission counts in a single query rather than a loop.
+    subq = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # ⚡ Bolt: Optimize bounty list to use a correlated subquery for submission counts, eliminating N+1 queries
+    subquery = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # BOLT OPTIMIZATION: Fix N+1 query issue by batching counts into a scalar subquery.
+    subq = (
+    # ⚡ Bolt Optimization: Use a single query with scalar_subquery to count submissions, preventing N+1 queries.
+    subq = (
+    # ⚡ Bolt: Optimize N+1 and len() count query using scalar subqueries
+    subq = (
+        select(func.count(BountySubmission.bounty_id))
+    # ⚡ BOLT OPTIMIZATION:
+    # Replaced N+1 queries calculating submission counts in a Python loop
+    # `len(result.scalars().all())` with a single correlated subquery.
+    # This executes everything on the database side and eliminates the N extra trips.
+    count_subq = (
+    # ⚡ Bolt: Optimized N+1 query. Replaced per-bounty scalar count query inside loop
+    # with a single correlated scalar subquery for submission counting.
+    submission_count_subquery = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # ⚡ Bolt: Use scalar_subquery to batch submission counts and prevent N+1 queries.
+    sub_count_query = (
+        select(func.count())
+        .select_from(BountySubmission)
+    # Bolt: optimized by replacing N+1 per-row length calculations with a correlated scalar subquery for submission counts
+    subq = (
+    # Performance optimization: Replace N+1 queries calculating submission counts
+    # via fetching all objects (`len(res.scalars().all())`) with a single SQL
+    # statement using `.scalar_subquery()`. Expected to significantly reduce
+    # latency and DB load for the listing endpoint.
+    BountySubmissionAlias = aliased(BountySubmission)
+    count_subq = (
+        select(func.count(BountySubmissionAlias.id))
+        .where(BountySubmissionAlias.bounty_id == Bounty.id)
+    # ⚡ BOLT OPTIMIZATION: Replaced N+1 queries in loop with a single query using scalar_subquery
+    # Expected impact: Reduces database queries from O(N) to O(1), improving response time significantly.
+    sub_count_subq = (
+    # OPTIMIZATION: Resolves N+1 queries. Uses `func.count()` with `scalar_subquery()`
+    # and `.correlate(Bounty)` to retrieve bounties and their submission counts in a single query.
+    sub_count_subq = (
+    # PERFORMANCE OPTIMIZATION: Resolves N+1 query and memory inefficiency.
+    # Replaced loop fetching all BountySubmissions per bounty to count them
+    # with a single scalar_subquery using func.count().
+    subquery = (
+    # ⚡ Bolt Optimization: Use scalar_subquery with func.count() to avoid N+1 query loops.
+    # Prevents executing a separate `len(sub_count_res.scalars().all())` count query for every bounty.
+    sub_count_subq = (
+    # Bolt Optimization: Batch queries to avoid N+1 and memory bloat
+    subq = (
+        select(func.count())
+    # ⚡ Bolt: Optimized N+1 query.
+    # Replaced iterative queries and memory bloat from len(.all()) with a
+    # scalar subquery that computes the submission count at the database level.
+    # Performance Optimization:
+    # Batch member counts using a scalar subquery instead of performing N+1
+    # db queries inside the loop over bounties.
+    count_subquery = (
+        select(func.count(BountySubmission.id))
+        .where(BountySubmission.bounty_id == Bounty.id)
+        .correlate(Bounty)
+        .scalar_subquery()
+    )
+
+    result = await db.execute(
+    result = await db.execute(
+    result = await db.execute(
+    result = await db.execute(
+    result = await db.execute(
+        select(Bounty, submission_count_subq.label("submission_count"))
+    result = await db.execute(
+        select(Bounty, sub_count_sq)
+    result = await db.execute(
+        select(Bounty, subquery)
+
+    stmt = (
+    result = await db.execute(
+        select(Bounty, sub_count_query)
+    result = await db.execute(
+    result = await db.execute(
+    result = await db.execute(
+        select(Bounty, subq)
+
+    result = await db.execute(
+    result = await db.execute(
+        select(Bounty, subquery.label("submission_count"))
+    result = await db.execute(
+        select(Bounty, subq)
+
+    result = await db.execute(
+        select(Bounty, subq)
+    result = await db.execute(
+    result = await db.execute(
+        select(Bounty, count_subq.label('submission_count'))
+    query = (
+        select(Bounty, submission_count_subquery)
+    result = await db.execute(
+        select(Bounty, sub_count_query.label("submission_count"))
+    result = await db.execute(
+    result = await db.execute(
+        select(Bounty, count_subq.label("submission_count"))
+    result = await db.execute(
+        select(Bounty, sub_count_subq.label("submission_count"))
+    stmt = (
+        select(Bounty, sub_count_subq.label("submission_count"))
+    query = (
+        select(Bounty, subquery.label("submission_count"))
+    result = await db.execute(
+        select(Bounty, sub_count_subq)
+    result = await db.execute(
+    result = await db.execute(
+        select(Bounty, count_subquery.label("submission_count"))
+    # Optimization: Replaced N+1 queries using scalar_subquery to batch submission count calculation
+    # Expected impact: Reduced database roundtrips and memory bloat from looping over bounties
+    # Performance Optimization: Avoid N+1 queries and loading all submissions into memory.
+    # Use scalar_subquery to retrieve the submission count alongside each Bounty in a single DB roundtrip.
+    # ⚡ Bolt Optimization: Replacing N+1 query loop with a single scalar subquery
+    # Expectation: Reduces number of queries from 1 + N to 1, significantly improving list endpoint performance
+    subq = (
+        select(func.count(BountySubmission.id))
+        .where(BountySubmission.bounty_id == Bounty.id)
+        .scalar_subquery()
+        .label("submission_count")
+    )
+
+    result = await db.execute(
+        select(Bounty, subq)
+    )
+
+    stmt = (
+    result = await db.execute(
+        select(Bounty, subq.label('submission_count'))
+    result = await db.execute(
+        select(Bounty, subq.label("submission_count"))
         .where(Bounty.status == status, Bounty.funded == True)  # noqa: E712
         .order_by(desc(Bounty.created_at))
         .limit(limit)
     )
-    bounties = result.scalars().all()
+
+    out = []
+    for b, count in result.all():
+    rows = result.all()
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    results = result.all()
+    out = [BountyResponse(**b.__dict__, submission_count=count) for b, count in results]
+    rows = result.all()
+    out = []
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+
+    rows = result.all()
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    rows = result.all()
+    out = [BountyResponse(**b.__dict__, submission_count=count) for b, count in rows]
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    rows = result.all()
+
+    out = []
+    for bounty, count in rows:
+        out.append(BountyResponse(**bounty.__dict__, submission_count=count or 0))
+    bounties_with_counts = result.all()
+
+    out = []
+    for b, count in bounties_with_counts:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    rows = result.all()
+    out = []
+
+    out = []
+    for b, count in result.all():
+    rows = result.all()
+    return [BountyResponse(**b.__dict__, submission_count=count or 0) for b, count in rows]
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    bounties = result.all()
+    out = []
+    for b, count in bounties:
+    rows = result.all()
+    out = []
+
+    rows = result.all()
+    out = []
+    for b, count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    result = await db.execute(query)
+
+    out = []
+    for b, count in result.all():
+    out = []
+    for row in result.all():
+        bounty, count = row
+    rows = result.all()
+    out = []
+    bounties_with_counts = result.all()
+
+    out = []
+    for b, count in bounties_with_counts:
+    rows = result.all()
+
     out = []
     for b in bounties:
-        sub_count_res = await db.execute(
-            select(BountySubmission).where(BountySubmission.bounty_id == b.id)
+        # ⚡ Bolt Optimization: Use explicit func.count() instead of len(result.scalars().all()) to avoid loading all rows into memory in a loop.
+        count = await db.scalar(
+            select(func.count()).select_from(BountySubmission).where(BountySubmission.bounty_id == b.id)
         )
-        count = len(sub_count_res.scalars().all())
+        # ⚡ Bolt: Use func.count() to avoid loading all submission objects into memory
+        sub_count_res = await db.execute(
+            select(func.count(BountySubmission.id)).where(BountySubmission.bounty_id == b.id)
+        )
+        count = sub_count_res.scalar() or 0
+        # ⚡ Bolt Optimization: Calculate count natively in SQL to avoid loading submission records
+        # Expected Impact: Prevents memory OOM for bounties with large numbers of submissions
+        count = await db.scalar(
+            select(func.count()).select_from(BountySubmission).where(BountySubmission.bounty_id == b.id)
+        )
+        out.append(BountyResponse(**b.__dict__, submission_count=count or 0))
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    out = []
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    out = []
+    out = []
+    for b, count in result.all():
+    out = []
+    for row in result.all():
+        b = row.Bounty
+        count = row.submission_count
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    out = []
+    for b, count in rows:
         out.append(BountyResponse(**b.__dict__, submission_count=count))
+
+    rows = result.all()
+    out = []
+    for b, sub_count in rows:
+        out.append(BountyResponse(**b.__dict__, submission_count=sub_count or 0))
+    out = []
+    for bounty, count in result.all():
+        out.append(BountyResponse(**bounty.__dict__, submission_count=count))
     return out
 
 
