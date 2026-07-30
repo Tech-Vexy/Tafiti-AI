@@ -97,6 +97,17 @@ class Settings(BaseSettings):
         "https://www.tafitiai.co.ke",
         "https://tafitiai-app.netlify.app",
     ]
+
+    # Clerk Configuration
+    CLERK_AUDIENCE: str | list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "https://app.tafitiai.co.ke",
+        "https://www.tafitiai.co.ke",
+        "https://tafitiai-app.netlify.app",
+    ]
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
