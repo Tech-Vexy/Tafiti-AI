@@ -1,5 +1,4 @@
 import httpx
-import os
 from typing import Dict, Any, Optional
 from app.core.config import settings
 from app.core.logger import get_logger
