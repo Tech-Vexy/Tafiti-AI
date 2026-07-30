@@ -251,7 +251,7 @@ async def get_favorites(
         select(SavedQuery)
         .where(
             SavedQuery.user_id == current_user["user_id"],
-            SavedQuery.is_favorite == True
+            SavedQuery.is_favorite
         )
         .order_by(desc(SavedQuery.updated_at))
     )
