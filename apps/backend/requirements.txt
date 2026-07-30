@@ -11,6 +11,12 @@ passlib[bcrypt]
 python-multipart
 
 # LLM & Agent Frameworks
+langchain
+langchain-core
+langchain-openai
+langchain-community
+langchain-google-genai
+langgraph
 openai
 groq
 
@@ -39,9 +45,4 @@ pytest
 pytest-asyncio
 black
 ruff
-agno
 google-genai
-a2ui
-ag-ui-protocol
-ddgs
-arxiv
