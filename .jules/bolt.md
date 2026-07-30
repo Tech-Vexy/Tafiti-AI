@@ -1,3 +1,6 @@
+## 2025-02-20 - N+1 Query Anti-Pattern in Backend (SQLAlchemy)
+**Learning:** Calculating record counts by fetching all objects with `.scalars().all()` and calling `len()` causes severe N+1 queries in loops and unneeded memory usage.
+**Action:** Use `func.count()` with `scalar_subquery()` and explicitly `.correlate()` it in SQLAlchemy queries. For single queries, just aggregate directly and `.scalar()`.
 ## 2025-02-15 - [Anti-Pattern] Inefficient Record Counting
 
 **Learning:** Calculating record counts using `len(result.scalars().all())` is an anti-pattern that can lead to N+1 queries when looping, and pulls unnecessarily large sets of objects into memory.
