@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict
 from app.agents.research_agent import get_research_agent
 from app.core.logger import logger
 

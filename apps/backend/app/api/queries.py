@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, desc
 from typing import List
 from datetime import datetime
 import traceback
@@ -232,7 +232,7 @@ async def get_favorites(
         select(SavedQuery)
         .where(
             SavedQuery.user_id == current_user["user_id"],
-            SavedQuery.is_favorite == True
+            SavedQuery.is_favorite
         )
         .order_by(desc(SavedQuery.updated_at))
     )
