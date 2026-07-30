@@ -1,3 +1,7 @@
+## 2025-02-15 - [Anti-Pattern] Inefficient Record Counting
+
+**Learning:** Calculating record counts using `len(result.scalars().all())` is an anti-pattern that can lead to N+1 queries when looping, and pulls unnecessarily large sets of objects into memory.
+**Action:** Use `.scalar_subquery()`, explicitly aggregating with `func.count()`, and `.correlate()` to prevent auto-correlation issues for batched counting. For singular counts, use explicit aggregation `select(func.count()).select_from(...)` via `.scalar()`.
 ## 2024-05-18 - SQLAlchemy count performance
 **Learning:** In SQLAlchemy, computing the count by retrieving all items using `len(result.scalars().all())` is an anti-pattern that leads to unnecessary memory usage and processing overhead, and often causes N+1 problems in loops.
 **Action:** Always compute simple counts by running a query that returns the count (`select(func.count()).select_from(...)`) via `.scalar()`, and for batch queries, correlate the subquery explicitly.
