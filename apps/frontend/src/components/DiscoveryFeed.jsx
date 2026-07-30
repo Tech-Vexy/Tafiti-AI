@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { TrendingUp, Sparkles, ArrowUpRight, BookOpen } from 'lucide-react';
 import api from '../api/client';
+import { useToast } from '../hooks/useToast';
 
 export const DiscoveryFeed = ({ careerField, onSearch, topics, isLoadingRecs }) => {
     const [trending, setTrending] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+    const toast = useToast();
 
     useEffect(() => {
         const fetchTrending = async () => {
@@ -13,7 +15,7 @@ export const DiscoveryFeed = ({ careerField, onSearch, topics, isLoadingRecs }) 
                 const response = await api.get(`/research/discovery/trending?field=${careerField || ''}`);
                 setTrending(Array.isArray(response.data) ? response.data : []);
             } catch (e) {
-                console.error("Discovery failed", e);
+                toast.error("Discovery failed");
                 setTrending([]);
             } finally {
                 setIsLoading(false);
