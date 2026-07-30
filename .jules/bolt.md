@@ -1,3 +1,6 @@
+## 2026-07-11 - Optimize N+1 and scalar count queries
+**Learning:** Using `len(result.scalars().all())` is a performance anti-pattern. In loops, it causes N+1 queries. Even outside of loops, it loads full rows just to get a count, using extra memory.
+**Action:** For loops, use `.scalar_subquery()` and explicitly correlate with `func.count()`. For singular counts, use explicit aggregation `select(func.count()).select_from(...)` via `.scalar()`.
 ## 2024-07-10 - SQLAlchemy Scalar All Anti-Pattern
 **Learning:** Using `len(result.scalars().all())` is an anti-pattern when trying to fetch counts. In loops it leads to N+1 query performance problems, and even for simple queries it fetches the entire result set over the network only to compute the length. SQLAlchemy `AsyncSession` doesn't support concurrent queries easily, so queries must be batched or batched using subqueries.
 **Action:** When computing counts inside a loop (like nested entities), use a `.scalar_subquery()` correlated with the main model in a single query. When getting a simple count, use `select(func.count()).select_from(...)` via `.scalar()`.
