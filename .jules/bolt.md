@@ -1,3 +1,6 @@
+## 2025-01-20 - Optimize N+1 queries using scalar subqueries
+**Learning:** Discovered N+1 queries and memory-inefficient record counts using `len(result.scalars().all())` inside loops in list_my_sandboxes and list_bounties. This architecture anti-pattern causes performance degradation on larger datasets.
+**Action:** Replaced iterative `.all()` calls inside loops with `func.count()` as a `.scalar_subquery()` correlated to the main model, resolving the N+1 issue and reducing memory footprint.
 ## 2024-11-20 - [Fixing N+1 queries using `len(result.scalars().all())`]
 **Learning:** Python-level calculation of database counts using `len(result.scalars().all())` within a loop creates serious N+1 query bottlenecks in SQLAlchemy. This pattern is prevalent for counts like `submission_count` and `member_count`. Simply fetching data by using `scalar_subquery()` together with `.correlate(MainModel)` effectively pushes this computation to the database level and executes it in a single trip. Using an `aliased()` model is crucial when joining the same table or counting related properties to prevent SQLAlchemy auto-correlation failures.
 **Action:** Always scan for `len(result.scalars().all())` during performance optimization and replace it with `select(func.count()).scalar()` or as a correlated `.scalar_subquery()` batch depending on the context.
