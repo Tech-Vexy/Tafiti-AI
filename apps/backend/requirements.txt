@@ -19,7 +19,6 @@ langchain-google-genai
 langgraph
 openai
 groq
-pydantic-ai-slim[openai,groq,google]
 
 # Vector Database
 qdrant-client
