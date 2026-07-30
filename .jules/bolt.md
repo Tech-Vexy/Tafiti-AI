@@ -1,3 +1,6 @@
+## 2024-05-24 - N+1 Counts in Loops
+**Learning:** Using `len(result.scalars().all())` inside a loop leads to N+1 queries, fetching whole tables just to calculate the count.
+**Action:** Replace nested loops fetching lengths with `scalar_subquery()` or explicitly joined `func.count()` fields to resolve N+1.
 ## 2025-02-18 - Optimize Submission Count Query
 **Learning:** In loop constructs pulling related count data using `len(result.scalars().all())` initiates catastrophic N+1 query patterns, driving significant DB roundtrips.
 **Action:** Replace looped secondary queries with a single query utilizing `func.count()`, `.scalar_subquery()`, and `.correlate(MainModel)` paired with `.label()` on the primary SELECT statement.

@@ -10,6 +10,7 @@ import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy import select, func
@@ -132,6 +133,9 @@ async def list_my_sandboxes(
     db: AsyncSession = Depends(get_db),
 ):
     """List all sandboxes the current user is a member of."""
+    # ⚡ Bolt: Fix N+1 query issue for counting sandbox members
+    subq = (
+        select(func.count(SandboxMember.user_id))
     # Bolt Optimization: Fetch all sandboxes for user along with member count using single query + subquery
     SandboxMemberAlias = aliased(SandboxMember)
     member_count_subq = (
@@ -294,6 +298,14 @@ async def list_my_sandboxes(
         .correlate(InstitutionalSandbox)
         .scalar_subquery()
     )
+    sb_result = await db.execute(
+        select(InstitutionalSandbox, subq.label("member_count"))
+        .join(SandboxMember, SandboxMember.sandbox_id == InstitutionalSandbox.id)
+        .where(SandboxMember.user_id == current_user["user_id"])
+    )
+    results = sb_result.all()
+
+    out = [SandboxResponse(**sb.__dict__, member_count=count) for sb, count in results]
 
     result = await db.execute(
         select(InstitutionalSandbox, member_count_subquery)
@@ -560,6 +572,11 @@ async def join_sandbox(
     ))
     await db.commit()
 
+    # ⚡ Bolt: Fix N+1 issue for fetching sandbox member count
+    count = await db.scalar(
+        select(func.count(SandboxMember.user_id)).where(SandboxMember.sandbox_id == sandbox.id)
+    )
+    return SandboxResponse(**sandbox.__dict__, member_count=count or 0)
     # Bolt Optimization: Use scalar to count members without fetching all to memory
     count = await db.scalar(
         select(func.count(SandboxMember.id)).where(SandboxMember.sandbox_id == sandbox.id)
