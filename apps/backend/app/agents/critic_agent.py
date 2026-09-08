@@ -4,7 +4,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 from agno.agent import Agent
-from pydantic_ai import Agent
+from agno.models.groq import Groq as GroqModel
+from agno.models.openai import OpenAIChat
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -26,33 +27,76 @@ class ValidatedSynthesis(BaseModel):
     overall_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     critique_summary: Optional[str] = None
 
+def _build_model(provider: str = "openrouter", model_id: str = None):
+    """Build the appropriate Agno 2.x model instance."""
+    if provider == "gemini":
+        from agno.models.google import Gemini
+        return Gemini(id=model_id or settings.GEMINI_DEFAULT_MODEL)
+    elif provider == "openrouter":
+        from agno.models.openai import OpenAIChat
+        mid = model_id or settings.OPENROUTER_DEFAULT_MODEL
+        if ":" in mid:
+            mid = mid.split(":", 1)[1]
+        return OpenAIChat(
+            id=mid,
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.OPENROUTER_API_KEY,
+        )
+    elif provider == "nvidia":
+        from agno.models.openai import OpenAIChat
+        return OpenAIChat(
+            id=model_id or settings.NVIDIA_DEFAULT_MODEL,
+            base_url=settings.NVIDIA_BASE_URL,
+            api_key=settings.nvidia_api_key,
+        )
+    elif provider == "openai":
+        return OpenAIChat(id=model_id or "gpt-4o")
+    else:
+        from agno.models.openai import OpenAIChat
+        return OpenAIChat(
+            id=model_id or settings.OPENROUTER_DEFAULT_MODEL,
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.OPENROUTER_API_KEY,
+        )
+
+
 def _build_drafter_agent() -> Agent:
-    model_str = getattr(settings, "DRAFTER_MODEL", "google:gemini-1.5-pro")
-    if model_str.startswith("gemini"):
-        model_str = f"google:{model_str}"
+    # Research drafting agent uses OpenRouter
+    drafter_model = getattr(settings, "DRAFTER_MODEL", "openrouter:openrouter/free")
+    provider = "openrouter"
+    if ":" in drafter_model:
+        prefix, mid = drafter_model.split(":", 1)
+        if prefix in ("openrouter", "gemini", "nvidia", "openai"):
+            provider = prefix
+            drafter_model = mid
+    model_obj = _build_model(provider=provider, model_id=drafter_model)
 
     return Agent(
-        model=model_str,
-        system_message=(
+        model=model_obj,
+        instructions=[(
             "You are an expert academic researcher. "
             "Synthesise the provided papers into a dense, well-cited academic paragraph. "
             "Use [Source N] inline citations for every factual claim. "
             "Return only the synthesis text — no preamble."
-        ),
+        )],
     )
 
+
 def _build_critic_agent() -> Agent:
-    model_str = getattr(settings, "CRITIC_MODEL", "groq:llama-3.3-70b-versatile")
+    # Critic agent uses OpenRouter
+    critic_model = getattr(settings, "CRITIC_MODEL", "openrouter:openrouter/free")
+    model_obj = _build_model(provider="openrouter", model_id=critic_model)
+
     return Agent(
-        model=model_str,
+        model=model_obj,
         output_schema=ValidatedSynthesis,
-        system_message=(
+        instructions=[(
             "You are a rigorous academic fact-checker. "
             "Given a synthesis draft and source paper abstracts, "
             "verify that every [Source N] citation is supported by the source text. "
             "For unsupported claims set supported=false and provide a note. "
             "Calculate overall_confidence as mean of all citation confidence scores."
-        ),
+        )],
     )
 
 _drafter: Optional[Agent] = None
@@ -102,9 +146,9 @@ async def validated_synthesis(
         draft_result = await drafter.arun(drafter_prompt)
         draft_text: str = draft_result.content
     except Exception as e:
-        logger.warning(f"Drafter agent failed, falling back to empty draft: {e}")
+        logger.warning(f"Drafter agent failed: {e}")
         return ValidatedSynthesis(
-            draft=f"[Synthesis unavailable: {e}]",
+            draft="[Synthesis unavailable — drafter agent encountered an error]",
             overall_confidence=0.0,
             critique_summary="Drafter agent error.",
         )
@@ -140,5 +184,5 @@ async def validated_synthesis(
         return ValidatedSynthesis(
             draft=draft_text,
             overall_confidence=0.5,
-            critique_summary=f"Critic agent error: {e}",
+            critique_summary="Critic agent encountered an error — draft is unvalidated.",
         )

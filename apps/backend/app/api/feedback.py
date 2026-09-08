@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -49,7 +49,7 @@ async def submit_trial_feedback(
 
 @router.get("/testimonials", response_model=list[FeedbackPublicResponse])
 async def get_testimonials(
-    limit: int = 3,
+    limit: int = Query(default=3, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -1,0 +1,6 @@
+pytest==8.3.*
+pytest-asyncio==0.24.*
+httpx>=0.28.1
+aiosqlite==0.21.*
+black==25.*
+ruff==0.9.*

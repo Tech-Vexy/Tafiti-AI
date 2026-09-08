@@ -1,7 +1,8 @@
 import asyncio
 from typing import List, Optional
 from datetime import datetime
-from app.services.openalex_service import get_openalex_service, get_semantic_scholar_service
+from app.services.openalex_service import get_openalex_service
+from app.services.semantic_scholar_service import get_semantic_scholar_service
 from app.models.schemas import PaperBase, UserDiscoveryResponse
 from app.models.database import User, SearchHistory
 from app.core.logger import get_logger

@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import {
     Sparkles,
-    Users,
     RefreshCw,
-    BookOpen,
     Search as SearchIcon,
     ChevronRight,
     Globe,
@@ -13,7 +11,6 @@ import {
     Loader2,
 } from 'lucide-react';
 import { PaperCard } from './PaperCard';
-import { CollaboratorsView } from './CollaboratorsView';
 
 // ─── Preference Form ─────────────────────────────────────────────────────────
 const PreferenceForm = ({ onSave, isLoading, user }) => {
@@ -132,17 +129,13 @@ export const DiscoverView = ({
     isFetchRecs,
     onSearch,
     careerField,
-    similarResearchers,
-    isLoadingSimilar,
     handleSavePaper,
     onFetchRecommendations,
-    onConnect,
     discoverPapers,
     isLoadingDiscover,
     onRefreshDiscover,
     library = [],
 }) => {
-    const [activeSection, setActiveSection] = useState('papers');
     const [selectedPapers, setSelectedPapers] = useState([]);
 
     const hasProfile = !!(
@@ -163,39 +156,14 @@ export const DiscoverView = ({
             <header className="space-y-1">
                 <h1 className="text-3xl font-bold tracking-tight text-white">Discover</h1>
                 <p className="text-sm text-[var(--text-dim)]">
-                    Papers and researchers matched to your profile and research history.
+                    Papers matched to your profile and research history.
                 </p>
             </header>
-
-            {/* Section Tabs */}
-            <nav className="flex items-center gap-0 border-b border-white/5">
-                {[
-                    { id: 'papers', label: 'For You', icon: BookOpen },
-                    { id: 'collaborators', label: 'Researchers', icon: Users },
-                ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveSection(tab.id)}
-                        className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold transition-all relative ${
-                            activeSection === tab.id
-                                ? 'text-white'
-                                : 'text-slate-500 hover:text-slate-300'
-                        }`}
-                    >
-                        <tab.icon className={`w-4 h-4 ${activeSection === tab.id ? 'text-indigo-400' : 'text-slate-600'}`} />
-                        {tab.label}
-                        {activeSection === tab.id && (
-                            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500 rounded-full" />
-                        )}
-                    </button>
-                ))}
-            </nav>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                 {/* Main Content */}
                 <div className="lg:col-span-8 space-y-8">
-                    {activeSection === 'papers' && (
-                        <div className="space-y-8 animate-reveal">
+                    <div className="space-y-8 animate-reveal">
                             {!hasProfile ? (
                                 /* No profile yet — show setup */
                                 <div className="space-y-6">
@@ -266,23 +234,6 @@ export const DiscoverView = ({
                                 </>
                             )}
                         </div>
-                    )}
-
-                    {activeSection === 'collaborators' && (
-                        <div className="space-y-5 animate-reveal">
-                            <div>
-                                <h2 className="text-base font-bold text-white">Researchers in Your Field</h2>
-                                <p className="text-xs text-[var(--text-dim)] mt-0.5">
-                                    Other researchers with overlapping expertise.
-                                </p>
-                            </div>
-                            <CollaboratorsView
-                                researchers={similarResearchers}
-                                isLoading={isLoadingSimilar}
-                                onConnect={onConnect}
-                            />
-                        </div>
-                    )}
                 </div>
 
                 {/* Sidebar */}
@@ -358,3 +309,5 @@ export const DiscoverView = ({
         </div>
     );
 };
+
+export default DiscoverView;

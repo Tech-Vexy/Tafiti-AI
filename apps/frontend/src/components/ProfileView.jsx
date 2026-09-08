@@ -3,7 +3,7 @@ import { ProfileCard } from './ProfileCard';
 import { DiscoveryFeed } from './DiscoveryFeed';
 import {
     User, Briefcase, Edit3, Save, X, Loader2,
-    BookOpen, Star, Tag, Plus, ExternalLink
+    Tag, Plus, ExternalLink
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -88,7 +88,7 @@ export const ProfileView = ({ user, careerField, onSearch, onProfileUpdate }) =>
         setIsSaving(true);
         setError(null);
         try {
-            const response = await api.put('/auth/me', formData);
+            const _response = await api.put('/auth/me', formData);
             setIsEditing(false);
             // Notify parent to update global user state without a full page reload
             if (onProfileUpdate) {
@@ -301,7 +301,7 @@ export const ProfileView = ({ user, careerField, onSearch, onProfileUpdate }) =>
                                 </a>
                             ) : (
                                 <a
-                                    href={`${import.meta.env.VITE_API_URL || '/api/v1'}/auth/orcid/authorize`}
+                                    href={`${process.env.NEXT_PUBLIC_API_URL || '/api/v1'}/auth/orcid/authorize`}
                                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#A6CE39]/10 border border-[#A6CE39]/20 text-[#A6CE39] text-xs font-semibold hover:bg-[#A6CE39]/20 transition-all"
                                 >
                                     Connect ORCID
@@ -326,3 +326,5 @@ export const ProfileView = ({ user, careerField, onSearch, onProfileUpdate }) =>
         </div>
     );
 };
+
+export default ProfileView;

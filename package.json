@@ -1,31 +1,32 @@
 {
-    "name": "tafiti-ai",
-    "version": "1.0.0",
-    "private": true,
-    "workspaces": [
-        "apps/*",
-        "packages/*"
-    ],
-    "scripts": {
-        "build": "turbo run build",
-        "dev": "turbo run dev",
-        "lint": "turbo run lint",
-        "start": "turbo run start",
-        "format": "prettier --write \"**/*.{ts,tsx,md}\""
-    },
-    "devDependencies": {
-        "turbo": "latest",
-        "prettier": "^3.0.0"
-    },
-    "optionalDependencies": {
-        "@esbuild/linux-x64": "^0.21.5",
-        "@rollup/rollup-linux-x64-gnu": "^4.22.4",
-        "lightningcss-linux-x64-gnu": "^1.31.1",
-        "@tailwindcss/oxide-linux-x64-gnu": "^4.0.0"
-    },
-    "overrides": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0"
-    },
-    "packageManager": "npm@10.0.0"
+  "name": "tafiti-ai",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "start": "turbo run start",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "prettier": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "@esbuild/linux-x64": "^0.21.5",
+    "@rollup/rollup-linux-x64-gnu": "^4.22.4",
+    "lightningcss-linux-x64-gnu": "^1.31.1",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.0"
+  },
+  "overrides": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

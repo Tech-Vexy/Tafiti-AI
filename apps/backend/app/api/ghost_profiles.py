@@ -10,9 +10,9 @@ They become real User accounts once the co-author claims them via an invite link
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 import secrets
 
 from app.db.session import get_db
@@ -37,8 +37,7 @@ class GhostProfileResponse(BaseModel):
     invite_sent_at: Optional[datetime] = None
     is_claimed: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InviteRequest(BaseModel):
@@ -118,7 +117,7 @@ async def send_invite(
     # Attach the email and generate/refresh invite token
     ghost.email = invite_req.email
     ghost.invite_token = secrets.token_urlsafe(32)
-    ghost.invite_sent_at = datetime.utcnow()
+    ghost.invite_sent_at = datetime.now(timezone.utc)
     await db.commit()
 
     doi = (ghost.co_publication_dois or [None])[0]
@@ -154,7 +153,7 @@ async def claim_ghost_profile(
         raise HTTPException(status_code=400, detail="This profile has already been claimed")
 
     # Check token freshness (7-day window)
-    if ghost.invite_sent_at and datetime.utcnow() - ghost.invite_sent_at > timedelta(days=7):
+    if ghost.invite_sent_at and datetime.now(timezone.utc) - ghost.invite_sent_at > timedelta(days=7):
         raise HTTPException(status_code=410, detail="Invite token has expired")
 
     user_id = claim_req.clerk_user_id or current_user["user_id"]

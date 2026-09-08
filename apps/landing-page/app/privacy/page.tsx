@@ -9,7 +9,7 @@ export default function PrivacyPage() {
                     <section>
                         <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">1. Introduction</h2>
                         <p className="text-gray-600 dark:text-gray-300">
-                            Tafiti AI ("us", "we", or "our") operates the Tafiti AI application (the "Service"). This page informs you of our policies regarding the collection, use, and disclosure of personal data when you use our Service and the choices you have associated with that data.
+                            Tafiti AI (&ldquo;us&rdquo;, &ldquo;we&rdquo;, or &ldquo;our&rdquo;) operates the Tafiti AI application (the &ldquo;Service&rdquo;). This page informs you of our policies regarding the collection, use, and disclosure of personal data when you use our Service and the choices you have associated with that data.
                         </p>
                     </section>
 
@@ -57,7 +57,7 @@ export default function PrivacyPage() {
                     <section>
                         <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">6. Service Providers</h2>
                         <p className="text-gray-600 dark:text-gray-300">
-                            We may employ third party companies and individuals to facilitate our Service ("Service Providers"), to provide the Service on our behalf, to perform Service-related services or to assist us in analyzing how our Service is used.
+                            We may employ third party companies and individuals to facilitate our Service (&ldquo;Service Providers&rdquo;), to provide the Service on our behalf, to perform Service-related services or to assist us in analyzing how our Service is used.
                         </p>
                     </section>
 

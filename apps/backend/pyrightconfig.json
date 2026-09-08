@@ -1,0 +1,12 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": [
+    "app",
+    "main.py"
+  ],
+  "extraPaths": [
+    ".",
+    ".venv/Lib/site-packages"
+  ]
+}

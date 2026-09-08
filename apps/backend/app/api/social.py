@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from typing import List
@@ -56,7 +56,7 @@ async def connect_to_user(
 async def get_notifications(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    limit: int = 20
+    limit: int = Query(default=20, ge=1, le=100)
 ):
     stmt = select(Notification).where(
         Notification.user_id == current_user["user_id"]

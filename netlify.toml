@@ -1,3 +1,6 @@
 [build]
   command = "chmod +x node_modules/.bin/* apps/frontend/node_modules/.bin/* 2>/dev/null || true && npm run build --workspace=@tafiti/frontend"
-  publish = "apps/frontend/dist"
+  publish = "apps/frontend/.next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

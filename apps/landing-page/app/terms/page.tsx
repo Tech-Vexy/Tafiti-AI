@@ -16,7 +16,7 @@ export default function TermsPage() {
                     <section>
                         <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">2. Description of Service</h2>
                         <p className="text-gray-600 dark:text-gray-300">
-                            Tafiti AI provides an AI-powered research assistant platform ("the Service"). You are responsible for obtaining access to the Service and that access may involve third party fees (such as Internet service provider or airtime charges).
+                            Tafiti AI provides an AI-powered research assistant platform (&ldquo;the Service&rdquo;). You are responsible for obtaining access to the Service and that access may involve third party fees (such as Internet service provider or airtime charges).
                         </p>
                     </section>
 
@@ -51,7 +51,7 @@ export default function TermsPage() {
                     <section>
                         <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">7. Changes to Terms</h2>
                         <p className="text-gray-600 dark:text-gray-300">
-                            We reserve the right, at our sole discretion, to modify or replace these Terms at any time. If a revision is material we will try to provide at least 30 days' notice prior to any new terms taking effect.
+                            We reserve the right, at our sole discretion, to modify or replace these Terms at any time. If a revision is material we will try to provide at least 30 days&apos; notice prior to any new terms taking effect.
                         </p>
                     </section>
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-    Send, Sparkles, BookOpen, Layers,
-    X, ChevronRight, MessageSquare,
+    Send, Sparkles, Layers,
+    X, MessageSquare,
     Database, Quote, Loader2, Library,
     Copy, CheckCircle2, ListFilter
 } from 'lucide-react';
@@ -41,7 +41,7 @@ const ResearchChatView = ({
         setInput('');
     };
 
-    const handleKeyDown = (e) => {
+    const _handleKeyDown = (e) => {
         if (e.key === 'Enter' && e.ctrlKey) {
             handleSend(e);
         }
@@ -147,15 +147,31 @@ const ResearchChatView = ({
                     className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide pb-32"
                 >
                     {messages.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-40">
-                            <div className="w-16 h-16 bg-white/5 rounded-3xl flex items-center justify-center">
-                                <Sparkles className="w-8 h-8 text-indigo-400" />
+                        <div className="h-full flex flex-col items-center justify-center text-center space-y-8 animate-fade-in">
+                            <div className="w-20 h-20 bg-gradient-to-br from-indigo-500/20 to-emerald-500/10 rounded-3xl flex items-center justify-center shadow-lg shadow-indigo-500/10">
+                                <Sparkles className="w-10 h-10 text-indigo-400" />
                             </div>
-                            <div className="space-y-2">
-                                <h4 className="text-xl font-bold">Start Your Inquiry</h4>
-                                <p className="text-sm max-w-xs mx-auto leading-relaxed">
-                                    Upload PDFs or select papers from your library to ground the AI's knowledge.
+                            <div className="space-y-3">
+                                <h4 className="text-2xl font-black tracking-tight">What are you researching?</h4>
+                                <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+                                    Ask anything about your field. Ground your questions with papers from your library or uploaded PDFs for more precise answers.
                                 </p>
+                            </div>
+                            <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+                                {[
+                                    'Summarize the latest findings on malaria vaccines',
+                                    'Compare methods in climate adaptation research',
+                                    'What are the gaps in mobile health interventions?',
+                                    'Find contradictions in recent AI ethics papers',
+                                ].map((q, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => { setInput(q); }}
+                                        className="px-4 py-2.5 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-slate-400 hover:bg-indigo-500/5 hover:border-indigo-500/20 hover:text-indigo-300 transition-all text-left leading-snug"
+                                    >
+                                        {q}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     ) : (
@@ -258,29 +274,33 @@ const ResearchChatView = ({
             </div>
 
             {/* Bottom Input Area */}
-            <div className="p-6 bg-gradient-to-t from-[var(--bg-main)] via-[var(--bg-main)] to-transparent pt-10">
+            <div className="p-4 sm:p-6 bg-gradient-to-t from-[var(--bg-main)] via-[var(--bg-main)]/95 to-transparent pt-8 sm:pt-10">
                 <form
                     onSubmit={handleSend}
                     className="max-w-4xl mx-auto relative group"
                 >
-                    <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-emerald-400 rounded-2xl opacity-20 group-hover:opacity-40 transition-opacity blur" />
-                    <div className="relative flex items-center bg-[var(--bg-main)] rounded-2xl border border-white/10 focus-within:border-indigo-500/50 transition-all p-2">
-                        <input
-                            type="text"
+                    <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500/20 via-indigo-500/10 to-emerald-400/20 rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity blur" />
+                    <div className="relative flex items-end bg-[var(--bg-main)] rounded-2xl border border-white/10 focus-within:border-indigo-500/50 transition-all p-2">
+                        <textarea
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
                             placeholder={selectedSources.length > 0 || uploadedFiles.length > 0 ? "Ask about your grounded sources..." : "Ask a research question..."}
-                            className="flex-1 bg-transparent border-none outline-none px-4 py-3 text-white placeholder-slate-500 font-medium"
+                            className="flex-1 bg-transparent border-none outline-none px-4 py-3 text-white placeholder-slate-500 font-medium resize-none min-h-[48px] max-h-[160px] text-sm leading-relaxed"
+                            rows={1}
                             disabled={isLoading}
+                            onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; }}
                         />
-                        <button
-                            type="submit"
-                            disabled={!input.trim() || isLoading}
-                            className="p-3 bg-indigo-500 text-white rounded-xl hover:scale-105 active:scale-95 disabled:grayscale disabled:opacity-50 transition-all shadow-lg shadow-indigo-500/40"
-                        >
-                            <Send className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-2 pr-1 pb-1">
+                            <span className="hidden sm:block text-[10px] text-slate-600 font-bold">⏎ Send</span>
+                            <button
+                                type="submit"
+                                disabled={!input.trim() || isLoading}
+                                className="p-3 bg-indigo-500 text-white rounded-xl hover:scale-105 active:scale-95 disabled:grayscale disabled:opacity-50 transition-all shadow-lg shadow-indigo-500/40"
+                            >
+                                <Send className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
                     {(selectedSources.length > 0 || uploadedFiles.length > 0) && (
                         <div className="absolute -top-12 left-0 flex gap-2 overflow-x-auto max-w-full pb-2 scrollbar-hide">

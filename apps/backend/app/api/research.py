@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -8,22 +8,26 @@ import json
 from app.db.session import get_db
 from app.models.schemas import (
     SynthesisRequest, SynthesisResponse,
-    PaperSearchRequest, PaperSearchResponse, PaperBase,
+    PaperSearchRequest, PaperSearchResponse, PaperBase, SpringerSearchRequest,
     SearchHistoryResponse, PaperImpactResponse,
     GapAnalysisRequest, GapAnalysisResponse,
     CitationGraphResponse
 )
 from app.models.schemas_chat import ChatResearchRequest
-from app.services.openalex_service import (
-    get_openalex_service,
-    get_semantic_scholar_service,
-    get_arxiv_service,
-    get_core_service,
-    get_elsevier_service,
-    get_pubmed_service,
-    get_doaj_service,
-    get_ajol_service,
-    get_africarxiv_service,
+from app.services.openalex_service import get_openalex_service
+from app.services.semantic_scholar_service import get_semantic_scholar_service
+from app.services.openalex_service import get_arxiv_service
+from app.services.core_service import get_core_service
+from app.services.elsevier_service import get_elsevier_service
+from app.services.doaj_service import get_doaj_service
+from app.services.ajol_service import get_ajol_service
+from app.services.africarxiv_service import get_africarxiv_service
+from app.services.springer_service import get_springer_service
+from app.services.parallel_service import get_parallel_service
+from app.models.schemas import (
+    ParallelSearchRequest, ParallelSearchResponse, ParallelWebResult,
+    ParallelTaskCreateRequest, ParallelTaskResultResponse, ParallelTaskBasis,
+    ParallelExtractRequest, ParallelExtractResponse,
 )
 from app.agents.research_agent import get_research_agent
 from app.models.schemas import DeepResearchRequest, DeepResearchResponse, DeepResearchStatusResponse
@@ -53,23 +57,20 @@ async def search_papers(
     http = request.app.state.http_client
     per_source = max(5, search_request.limit // 2)
 
-    # Instantiate all nine source services
+    # Instantiate all source services
     openalex    = get_openalex_service(client=http)
     s2          = get_semantic_scholar_service(client=http)
     arxiv       = get_arxiv_service(client=http)
     core        = get_core_service(client=http)
     elsevier    = get_elsevier_service(client=http)
-    pubmed      = get_pubmed_service(client=http)
     doaj        = get_doaj_service(client=http)
     ajol        = get_ajol_service(client=http)
     africarxiv  = get_africarxiv_service(client=http)
+    springer    = get_springer_service(client=http)
+    parallel    = get_parallel_service()
 
-    # Fan-out: all nine sources run fully in parallel
-    (
-        oa_results, s2_results, arxiv_results,
-        core_results, elsevier_results, pubmed_results,
-        doaj_results, ajol_results, africarxiv_results,
-    ) = await asyncio.gather(
+    # Fan-out: all sources run fully in parallel
+    gather_tasks = [
         openalex.search_papers(
             query=search_request.query,
             limit=search_request.limit,
@@ -79,12 +80,29 @@ async def search_papers(
         arxiv.search_papers(query=search_request.query, limit=per_source),
         core.search_papers(query=search_request.query, limit=per_source),
         elsevier.search_papers(query=search_request.query, limit=per_source),
-        pubmed.search_papers(query=search_request.query, limit=per_source),
         doaj.search_papers(query=search_request.query, limit=per_source),
         ajol.search_papers(query=search_request.query, limit=per_source),
         africarxiv.search_papers(query=search_request.query, limit=per_source),
-        return_exceptions=True,
-    )
+        springer.search_papers(query=search_request.query, limit=per_source),
+    ]
+    if parallel.is_configured:
+        gather_tasks.append(parallel.search_papers(query=search_request.query, limit=per_source))
+
+    gather_results = await asyncio.gather(*gather_tasks, return_exceptions=True)
+
+    oa_results = gather_results[0]
+    batch_map = [
+        ("s2", gather_results[1]),
+        ("arxiv", gather_results[2]),
+        ("core", gather_results[3]),
+        ("elsevier", gather_results[4]),
+        ("doaj", gather_results[5]),
+        ("ajol", gather_results[6]),
+        ("africarxiv", gather_results[7]),
+        ("springer", gather_results[8]),
+    ]
+    if parallel.is_configured and len(gather_results) > 9:
+        batch_map.append(("parallel", gather_results[9]))
 
     # Merge: OpenAlex first (highest quality metadata), then deduplicate by ID
     papers: list = oa_results if isinstance(oa_results, list) else []
@@ -92,16 +110,7 @@ async def search_papers(
     source_counts: dict = {
         "openalex": len(oa_results) if isinstance(oa_results, list) else 0,
     }
-    for label, batch in (
-        ("s2", s2_results),
-        ("arxiv", arxiv_results),
-        ("core", core_results),
-        ("elsevier", elsevier_results),
-        ("pubmed", pubmed_results),
-        ("doaj", doaj_results),
-        ("ajol", ajol_results),
-        ("africarxiv", africarxiv_results),
-    ):
+    for label, batch in batch_map:
         count = 0
         if isinstance(batch, list):
             for p in batch:
@@ -138,6 +147,162 @@ async def search_papers(
         total=len(papers),
         from_cache=False
     )
+
+@router.post("/parallel/search", response_model=ParallelSearchResponse)
+async def search_parallel_web(
+    search_req: ParallelSearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Direct search endpoint for Parallel Web Systems.
+    Executes AI-optimized web searches using the parallel-web SDK.
+    """
+    service = get_parallel_service()
+    res = await service.search(
+        search_queries=search_req.search_queries,
+        objective=search_req.objective,
+        mode=search_req.mode or "advanced",
+        advanced_settings=search_req.advanced_settings,
+        max_results=search_req.max_results or 10,
+    )
+    return ParallelSearchResponse(
+        search_id=res.get("search_id"),
+        session_id=res.get("session_id"),
+        results=[ParallelWebResult(**r) for r in res.get("results", [])],
+        total=len(res.get("results", [])),
+        warnings=res.get("warnings", []),
+    )
+
+@router.post("/parallel/task")
+async def create_parallel_deep_research(
+    task_req: ParallelTaskCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Launch a multi-hop deep research run using the Parallel Task API.
+    """
+    service = get_parallel_service()
+    if not service.is_configured:
+        raise HTTPException(status_code=400, detail="PARALLEL_API_KEY is not configured on the server")
+
+    try:
+        task_data = await service.create_deep_research(
+            input_prompt=task_req.input_prompt,
+            processor=task_req.processor or "pro",
+        )
+        return task_data
+    except Exception as e:
+        logger.error(f"Parallel Task creation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/parallel/task/{run_id}", response_model=ParallelTaskResultResponse)
+async def get_parallel_task_result(
+    run_id: str,
+    api_timeout: int = Query(default=60, ge=5, le=3600),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Retrieve results of a deep research task run, including synthesis and citations.
+    """
+    service = get_parallel_service()
+    if not service.is_configured:
+        raise HTTPException(status_code=400, detail="PARALLEL_API_KEY is not configured on the server")
+
+    try:
+        data = await service.get_deep_research_result(run_id=run_id, api_timeout=api_timeout)
+        return ParallelTaskResultResponse(
+            run_id=data["run_id"],
+            content=data.get("content"),
+            basis=[
+                ParallelTaskBasis(
+                    field=b.get("field", ""),
+                    citations=b.get("citations", []),
+                )
+                for b in data.get("basis", [])
+            ],
+            status=data.get("status", "completed"),
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch Parallel Task result: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/parallel/extract", response_model=ParallelExtractResponse)
+async def extract_web_content(
+    extract_req: ParallelExtractRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Extract clean markdown from web URLs using the Parallel Extract API.
+    """
+    service = get_parallel_service()
+    if not service.is_configured:
+        raise HTTPException(status_code=400, detail="PARALLEL_API_KEY is not configured on the server")
+
+    try:
+        data = await service.extract(urls=extract_req.urls)
+        return ParallelExtractResponse(results=data.get("results", []))
+    except Exception as e:
+        logger.error(f"Parallel Extract failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/springer/search", response_model=PaperSearchResponse)
+async def search_springer_papers(
+    search_req: SpringerSearchRequest,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Search Springer Nature Meta API and Open Access API.
+    - `api_source`: 'meta' (versioned metadata), 'openaccess' (open access papers), or 'all' (both deduplicated).
+    - `open_access_only`: if True, restricts results exclusively to open access content with full text links.
+    """
+    http = getattr(request.app.state, "http_client", None)
+    service = get_springer_service(client=http)
+    if not service.is_configured:
+        raise HTTPException(
+            status_code=400,
+            detail="Springer Nature API keys (SPRINGER_META_API_KEY, SPRINGER_OPEN_ACCESS_API_KEY) are not configured on the server."
+        )
+
+    if search_req.api_source == "meta":
+        papers = await service.search_meta(query=search_req.query, limit=search_req.limit, filters=search_req.filters)
+    elif search_req.api_source == "openaccess" or search_req.open_access_only:
+        papers = await service.search_openaccess(query=search_req.query, limit=search_req.limit, filters=search_req.filters)
+    else:
+        papers = await service.search_papers(
+            query=search_req.query,
+            limit=search_req.limit,
+            open_access_only=search_req.open_access_only,
+            filters=search_req.filters,
+        )
+
+    return PaperSearchResponse(
+        papers=papers,
+        total=len(papers),
+        from_cache=False,
+    )
+
+@router.get("/springer/doi/{doi:path}", response_model=PaperBase)
+async def get_springer_paper_by_doi(
+    doi: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Retrieve paper details from Springer Nature by DOI.
+    """
+    http = getattr(request.app.state, "http_client", None)
+    service = get_springer_service(client=http)
+    if not service.is_configured:
+        raise HTTPException(
+            status_code=400,
+            detail="Springer Nature API keys are not configured on the server."
+        )
+
+    paper = await service.get_paper_by_doi(doi)
+    if not paper:
+        raise HTTPException(status_code=404, detail=f"Paper with DOI '{doi}' not found in Springer Nature.")
+    return paper
 
 @router.post("/synthesize", response_model=SynthesisResponse)
 async def synthesize(
@@ -321,18 +486,6 @@ async def collaborate_synthesis(
                 full_content += chunk
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
             
-            # Record activity if project_id provided
-            if synth_request.project_id:
-                from app.models.database import ProjectActivity
-                activity = ProjectActivity(
-                    project_id=synth_request.project_id,
-                    user_id=current_user["user_id"],
-                    activity_type="collaborative_synthesis",
-                    content=f"Collaborative synthesis performed for: {synth_request.query}"
-                )
-                db.add(activity)
-                await db.commit()
-                
         except Exception as e:
             logger.error(f"Collaborative synthesis failed: {str(e)}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -372,7 +525,7 @@ async def get_paper_details(
 async def get_related_papers(
     paper_id: str,
     request: Request,
-    limit: int = 5,
+    limit: int = Query(default=5, ge=1, le=50),
     current_user: dict = Depends(get_current_user)
 ):
     openalex = get_openalex_service(client=request.app.state.http_client)
@@ -383,8 +536,8 @@ async def get_related_papers(
 async def get_citation_graph(
     paper_id: str,
     request: Request,
-    refs_limit: int = 8,
-    citing_limit: int = 8,
+    refs_limit: int = Query(default=8, ge=1, le=50),
+    citing_limit: int = Query(default=8, ge=1, le=50),
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -529,7 +682,7 @@ async def run_gap_analysis(
         )
     except ValueError as e:
         logger.error(f"Gap analysis LLM error: {e}")
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail="Research service temporarily unavailable")
 
     processing_time = time.time() - start_time
     logger.info(f"Gap analysis completed in {processing_time:.4f}s")
@@ -545,7 +698,7 @@ async def run_gap_analysis(
 async def get_search_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    limit: int = 20
+    limit: int = Query(default=20, ge=1, le=100),
 ):
     from sqlalchemy import select
     result = await db.execute(
@@ -581,7 +734,7 @@ async def start_deep_research(
         if cached_output:
             # Create a DB session marked as completed directly
             new_session = DeepResearchSession(
-                user_id=current_user["id"],
+                user_id=current_user["user_id"],
                 query=dr_request.query,
                 interaction_id="cached_" + query_hash,
                 status="completed",
@@ -597,12 +750,16 @@ async def start_deep_research(
         agent = get_deep_research_agent()
         interaction_id = await agent.start_research(
             query=dr_request.query,
-            mcp_servers=dr_request.mcp_servers
+            mcp_servers=dr_request.mcp_servers,
+            engine=dr_request.engine,
+            thinking_summaries=dr_request.thinking_summaries,
+            visualization=dr_request.visualization,
+            collaborative_planning=dr_request.collaborative_planning,
         )
 
         # Save to DB
         new_session = DeepResearchSession(
-            user_id=current_user["id"],
+            user_id=current_user["user_id"],
             query=dr_request.query,
             interaction_id=interaction_id,
             status="pending"
@@ -616,7 +773,7 @@ async def start_deep_research(
         )
     except Exception as e:
         logger.error(f"Error starting deep research: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
 
 @router.get("/deep-research/{interaction_id}", response_model=DeepResearchStatusResponse)
 async def get_deep_research_status(
@@ -668,11 +825,12 @@ async def get_deep_research_status(
             interaction_id=interaction_id,
             status=status_info["status"],
             output=status_info.get("output"),
-            error=status_info.get("error")
+            error=status_info.get("error"),
+            progress=status_info.get("progress"),
         )
     except Exception as e:
         logger.error(f"Error polling deep research status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
 
 @router.post("/deep-research/{interaction_id}/validate", response_model=DeepResearchValidationResponse)
 async def validate_deep_research(
@@ -718,4 +876,4 @@ async def validate_deep_research(
         raise
     except Exception as e:
         logger.error(f"Error validating deep research: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")

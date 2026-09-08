@@ -7,18 +7,23 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND
 )
 
-celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    task_track_started=True,
-    task_time_limit=3600,  # 1 hour
-    worker_max_tasks_per_child=1000,
-    broker_use_ssl={"ssl_cert_reqs": "none"},
-    redis_backend_use_ssl={"ssl_cert_reqs": "none"},
-)
+celery_conf = {
+    "task_serializer": "json",
+    "accept_content": ["json"],
+    "result_serializer": "json",
+    "timezone": "UTC",
+    "enable_utc": True,
+    "task_track_started": True,
+    "task_time_limit": 3600,  # 1 hour
+    "worker_max_tasks_per_child": 1000,
+}
+
+if settings.CELERY_BROKER_URL and settings.CELERY_BROKER_URL.startswith("rediss://"):
+    celery_conf["broker_use_ssl"] = {"ssl_cert_reqs": "none"}
+if settings.CELERY_RESULT_BACKEND and settings.CELERY_RESULT_BACKEND.startswith("rediss://"):
+    celery_conf["redis_backend_use_ssl"] = {"ssl_cert_reqs": "none"}
+
+celery_app.conf.update(**celery_conf)
 
 
 @celery_app.task(name="process_batch_synthesis")
@@ -46,9 +51,9 @@ def process_batch_synthesis(queries: list, papers: list, user_id: int):
 @celery_app.task(name="cleanup_old_vectors")
 def cleanup_old_vectors(days: int = 90):
     """Clean up old vector embeddings"""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     # Implementation depends on metadata structure
     return {"status": "completed", "cutoff": cutoff.isoformat()}
 
@@ -102,8 +107,8 @@ def generate_analytics():
                 "total_users": user_count,
                 "total_saved_queries": query_count,
                 "total_sessions": session_count,
-                "generated_at": datetime.utcnow().isoformat()
+                "generated_at": datetime.now(timezone.utc).isoformat()
             }
     
-    from datetime import datetime
+    from datetime import datetime, timezone
     return asyncio.run(analyze())

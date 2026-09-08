@@ -1,4 +1,7 @@
 {
-    "css.customData": [],
-    "css.lint.unknownAtRules": "ignore"
+  "python.defaultInterpreterPath": "${workspaceFolder}/apps/backend/.venv/Scripts/python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/apps/backend",
+    "${workspaceFolder}/apps/backend/.venv/Lib/site-packages"
+  ]
 }

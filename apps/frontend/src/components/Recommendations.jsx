@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ArrowRight, UserCircle, Briefcase, GraduationCap } from 'lucide-react';
+import { Sparkles, ArrowRight, Briefcase, GraduationCap } from 'lucide-react';
 
 export const Recommendations = ({ topics, onSelect, isLoading }) => {
     if (isLoading) {

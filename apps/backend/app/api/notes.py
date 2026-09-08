@@ -6,7 +6,7 @@ from app.models.schemas import NoteCreate, NoteUpdate, NoteResponse
 from app.models.database import Note
 from app.core.security import get_current_user
 from sqlalchemy.future import select
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.logger import get_logger
 
 logger = get_logger("notes_api")
@@ -67,11 +67,11 @@ async def update_note(
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     
-    update_data = note_in.dict(exclude_unset=True)
+    update_data = note_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(note, field, value)
     
-    note.updated_at = datetime.utcnow()
+    note.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(note)
     return note

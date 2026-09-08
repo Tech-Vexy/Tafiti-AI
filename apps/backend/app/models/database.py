@@ -1,24 +1,20 @@
 from datetime import datetime
-import uuid
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON
+import json
 import os
+import uuid
+
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON, Index, LargeBinary
+from sqlalchemy import TypeDecorator
+from sqlalchemy.orm import relationship
+
 if os.environ.get("TESTING") == "1":
-from sqlalchemy import JSON
-if os.environ.get('TESTING') == '1':
     JSONB = JSON
 else:
     from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
-import os
 
 DB_JSON = JSON if os.environ.get("TESTING") else JSONB
 
 from app.db.session import Base
-
-
-
-import json
-from sqlalchemy import TypeDecorator
 
 class FlexibleJSONB(TypeDecorator):
     impl = JSON().with_variant(JSONB, "postgresql")
@@ -64,8 +60,7 @@ class User(Base):
     # Academic Profile Fields
     bio = Column(Text, nullable=True)
     university = Column(String(200), nullable=True)
-    expertise_areas = Column(FlexibleJSONB, default=list) # List of strings
-    expertise_areas = Column(DB_JSON, default=list) # List of strings
+    expertise_areas = Column(FlexibleJSONB, default=list)  # List of strings
     career_field = Column(String(200), nullable=True)
     citation_count = Column(Integer, default=0)
     publications_count = Column(Integer, default=0)
@@ -81,13 +76,12 @@ class User(Base):
     
     queries = relationship("SavedQuery", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    theses = relationship("Thesis", back_populates="user", cascade="all, delete-orphan")
     saved_papers = relationship("SavedPaper", back_populates="user", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     research_sessions = relationship("ResearchSession", back_populates="user", cascade="all, delete-orphan")
     deep_research_sessions = relationship("DeepResearchSession", back_populates="user", cascade="all, delete-orphan")
     search_history = relationship("SearchHistory", back_populates="user", cascade="all, delete-orphan")
-    projects = relationship("ResearchProject", back_populates="owner", cascade="all, delete-orphan")
-    memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
     
     # Social Relationships
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
@@ -107,6 +101,10 @@ class User(Base):
         cascade="all, delete-orphan"
     )
 
+    # Research Intelligence Layer
+    # (backrefs: research_questions via ResearchQuestion.user)
+    # (backref: orcid_profile, orcid_publications, claimed_ghost_profile,
+    #  uploaded_files)
 
 class SavedQuery(Base):
     __tablename__ = "saved_queries"
@@ -118,18 +116,12 @@ class SavedQuery(Base):
     papers = Column(FlexibleJSONB, nullable=False)
     answer = Column(Text, nullable=False)
     tags = Column(FlexibleJSONB, default=list)
-    papers = Column(DB_JSON, nullable=False)
-    answer = Column(Text, nullable=False)
-    tags = Column(DB_JSON, default=list)
     is_favorite = Column(Boolean, default=False)
     vector_id = Column(String(100), nullable=True)
-    project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     user = relationship("User", back_populates="queries")
-    project = relationship("ResearchProject", back_populates="queries")
-
 
 class UserSettings(Base):
     __tablename__ = "user_settings"
@@ -146,7 +138,6 @@ class UserSettings(Base):
     
     user = relationship("User", back_populates="settings")
 
-
 class ResearchSession(Base):
     __tablename__ = "research_sessions"
     
@@ -160,7 +151,6 @@ class ResearchSession(Base):
     
     user = relationship("User", back_populates="research_sessions")
 
-
 class SavedPaper(Base):
     __tablename__ = "saved_papers"
     
@@ -168,10 +158,8 @@ class SavedPaper(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     paper_id = Column(String(100), nullable=False) # OpenAlex ID
     title = Column(String(500), nullable=False)
-    filters = Column(FlexibleJSONB, default=dict) # Store search filters
+    filters = Column(FlexibleJSONB, default=dict)  # Store search filters
     authors = Column(FlexibleJSONB, default=list)
-    filters = Column(DB_JSON, default=dict) # Store search filters
-    authors = Column(DB_JSON, default=list)
     year = Column(Integer)
     citations = Column(Integer)
     abstract = Column(Text)
@@ -187,12 +175,10 @@ class Note(Base):
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False, default="")
     tags = Column(FlexibleJSON, default=list)
-    project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     user = relationship("User", back_populates="notes")
-    project = relationship("ResearchProject", back_populates="notes")
 
 class SearchHistory(Base):
     __tablename__ = "search_history"
@@ -230,46 +216,6 @@ class Notification(Base):
     
     user = relationship("User", back_populates="notifications")
 
-class ResearchProject(Base):
-    __tablename__ = "research_projects"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    owner_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    owner = relationship("User", back_populates="projects")
-    members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan")
-    activities = relationship("ProjectActivity", back_populates="project", cascade="all, delete-orphan")
-    queries = relationship("SavedQuery", back_populates="project")
-    notes = relationship("Note", back_populates="project")
-
-class ProjectMember(Base):
-    __tablename__ = "project_members"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role = Column(String(20), default="member") # owner, editor, viewer
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    project = relationship("ResearchProject", back_populates="members")
-    user = relationship("User", back_populates="memberships")
-
-class ProjectActivity(Base):
-    __tablename__ = "project_activities"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("research_projects.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
-    activity_type = Column(String(50), nullable=False) # query_added, note_created, member_joined
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    project = relationship("ResearchProject", back_populates="activities")
-
-
 class TrialFeedback(Base):
     __tablename__ = "trial_feedback"
 
@@ -280,7 +226,6 @@ class TrialFeedback(Base):
     improvement_text = Column(Text, nullable=True)
     would_recommend = Column(String(10), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
 
 # ─── ORCID Integration ────────────────────────────────────────────────────────
 
@@ -299,7 +244,6 @@ class OrcidProfile(Base):
 
     user = relationship("User", backref="orcid_profile", uselist=False)
 
-
 class OrcidPublication(Base):
     """Publications pulled from ORCID and synced to a user's profile."""
     __tablename__ = "orcid_publications"
@@ -315,7 +259,6 @@ class OrcidPublication(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", backref="orcid_publications")
-
 
 # ─── Ghost Profiles ───────────────────────────────────────────────────────────
 
@@ -333,7 +276,6 @@ class GhostProfile(Base):
     affiliation = Column(String(300), nullable=True)
     # co-publication context — list of DOIs where this person appears as co-author
     co_publication_dois = Column(FlexibleJSONB, default=list)
-    co_publication_dois = Column(DB_JSON, default=list)
     # once claimed, points to the real user
     claimed_by_user_id = Column(String(50), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     invite_sent_at = Column(DateTime, nullable=True)
@@ -342,129 +284,16 @@ class GhostProfile(Base):
 
     claimed_by = relationship("User", backref="claimed_ghost_profile", foreign_keys=[claimed_by_user_id])
 
-
-# ─── Micro-Bounties ───────────────────────────────────────────────────────────
-
-class Bounty(Base):
-    """
-    A financial or reputation bounty attached to a paper or research question,
-    incentivising rapid peer review via Paystack.
-    """
-    __tablename__ = "bounties"
-
-    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
-    creator_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    # What is being bounty-hunted?
-    paper_id = Column(String(100), nullable=True)       # OpenAlex / arXiv / etc. paper ID
-    paper_title = Column(String(500), nullable=True)
-    description = Column(Text, nullable=False)           # what kind of review is needed
-    # Reward
-    amount_kes = Column(Integer, default=0)              # KES amount (can be 0 = reputation only)
-    reputation_points = Column(Integer, default=10)
-    # Status
-    status = Column(String(20), default="open")         # open, awarded, expired, cancelled
-    # Paystack payment reference for the bounty fund
-    paystack_reference = Column(String(100), nullable=True)
-    funded = Column(Boolean, default=False)
-    # Winner
-    awarded_to_user_id = Column(String(50), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    awarded_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    creator = relationship("User", foreign_keys=[creator_id], backref="created_bounties")
-    awarded_to = relationship("User", foreign_keys=[awarded_to_user_id], backref="won_bounties")
-    submissions = relationship("BountySubmission", back_populates="bounty", cascade="all, delete-orphan")
-
-
-class BountySubmission(Base):
-    """A peer-review submission made against an open bounty."""
-    __tablename__ = "bounty_submissions"
-
-    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
-    bounty_id = Column(String(50), ForeignKey("bounties.id", ondelete="CASCADE"), nullable=False)
-    submitter_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    review_text = Column(Text, nullable=False)
-    is_winner = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    bounty = relationship("Bounty", back_populates="submissions")
-    submitter = relationship("User", backref="bounty_submissions")
-
-
-# ─── Institutional Sandboxes ──────────────────────────────────────────────────
-
-class InstitutionalSandbox(Base):
-    """
-    A closed, branded workspace scoped to a university or event.
-    All research sessions, notes, and projects inside are visible only to members.
-    """
-    __tablename__ = "institutional_sandboxes"
-
-    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String(200), nullable=False)
-    institution = Column(String(300), nullable=False)   # e.g. "University of Nairobi"
-    description = Column(Text, nullable=True)
-    logo_url = Column(String(500), nullable=True)
-    # Access control
-    admin_user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    invite_code = Column(String(20), unique=True, index=True, nullable=False)  # share to join
-    is_public = Column(Boolean, default=False)          # True = discoverable, False = invite-only
-    # Optional event window
-    event_start = Column(DateTime, nullable=True)
-    event_end = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    admin = relationship("User", backref="administered_sandboxes", foreign_keys=[admin_user_id])
-    members = relationship("SandboxMember", back_populates="sandbox", cascade="all, delete-orphan")
-
-
-class SandboxMember(Base):
-    """Membership record linking a User to an InstitutionalSandbox."""
-    __tablename__ = "sandbox_members"
-
-    id = Column(Integer, primary_key=True, index=True)
-    sandbox_id = Column(String(50), ForeignKey("institutional_sandboxes.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role = Column(String(20), default="participant")    # admin, mentor, participant
-    joined_at = Column(DateTime, default=datetime.utcnow)
-
-    sandbox = relationship("InstitutionalSandbox", back_populates="members")
-    user = relationship("User", backref="sandbox_memberships")
-
-
-# ─── Cryptographic Anchoring ──────────────────────────────────────────────────
-
-class DraftAnchor(Base):
-    """
-    Stores a SHA-256 hash of a private research draft at a specific point in time.
-    Provides proof of prior art without exposing content.
-    """
-    __tablename__ = "draft_anchors"
-
-    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    # Human-readable label (never revealed until the user chooses to disclose)
-    label = Column(String(200), nullable=True)
-    # The SHA-256 hex digest of the draft content
-    content_hash = Column(String(64), nullable=False, index=True)
-    # Optional: external notary confirmation URL / transaction ID
-    external_anchor_ref = Column(String(500), nullable=True)
-    anchored_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    user = relationship("User", backref="draft_anchors")
-
-
 # ─── File Uploads History ─────────────────────────────────────────────────────
 
 class UploadedFile(Base):
-    """Tracks every PDF a user uploads to Pinata IPFS."""
+    """Tracks every PDF a user uploads to Supabase Storage."""
     __tablename__ = "uploaded_files"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     filename = Column(String(255), nullable=False)
-    cid = Column(String(100), nullable=True)            # IPFS CID from Pinata
+    cid = Column(String(500), nullable=True)           # Supabase Storage path (e.g. user_id/filename.pdf)
     file_size = Column(Integer, nullable=True)          # bytes
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
@@ -484,3 +313,556 @@ class DeepResearchSession(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="deep_research_sessions")
+
+
+# ─── Research Intelligence Layer ─────────────────────────────────────────────
+
+class ResearchQuestion(Base):
+    """
+    A top-level research question that drives an investigation.
+    Owns a DAG of ResearchTasks, which produce Sources -> Passages -> Evidence -> Claims.
+    """
+    __tablename__ = "research_questions"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    question = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="active")  # active, paused, completed, abandoned
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", backref="research_questions")
+    tasks = relationship("ResearchTask", back_populates="question", cascade="all, delete-orphan")
+    claims = relationship("Claim", back_populates="question", cascade="all, delete-orphan")
+
+
+class ResearchTask(Base):
+    """
+    A unit of work within a research question - a step in the Research DAG.
+    Tasks can depend on other tasks, forming a directed acyclic graph.
+    """
+    __tablename__ = "research_tasks"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=False)
+    task_type = Column(String(50), nullable=False)  # search, literature_review, contradiction_search, synthesis, dataset_analysis
+    description = Column(Text, nullable=False)
+    status = Column(String(20), default="pending")  # pending, running, completed, failed, cancelled
+    depends_on = Column(FlexibleJSONB, default=list)  # list of task IDs (DAG edges)
+    result_summary = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    agent_model = Column(String(100), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    question = relationship("ResearchQuestion", back_populates="tasks")
+    sources = relationship("Source", back_populates="task", cascade="all, delete-orphan")
+
+
+class Source(Base):
+    """
+    A discovered source document (paper, dataset, webpage) linked to a research task.
+    """
+    __tablename__ = "research_sources"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    task_id = Column(String(50), ForeignKey("research_tasks.id", ondelete="CASCADE"), nullable=False)
+    external_id = Column(String(200), nullable=True, index=True)  # OpenAlex ID, DOI, PMID
+    source_type = Column(String(50), nullable=False)  # paper, dataset, webpage, book, report
+    title = Column(String(500), nullable=False)
+    authors = Column(FlexibleJSONB, default=list)
+    year = Column(Integer, nullable=True)
+    journal = Column(String(300), nullable=True)
+    doi = Column(String(200), nullable=True, index=True)
+    url = Column(String(500), nullable=True)
+    abstract = Column(Text, nullable=True)
+    citation_count = Column(Integer, nullable=True)
+    relevance_score = Column(Integer, default=0)  # 0-100
+    source_metadata = Column("metadata", FlexibleJSONB, default=dict)
+    discovered_at = Column(DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        if "metadata" in kwargs and "source_metadata" not in kwargs:
+            kwargs["source_metadata"] = kwargs.pop("metadata")
+        super().__init__(**kwargs)
+
+    task = relationship("ResearchTask", back_populates="sources")
+    passages = relationship("Passage", back_populates="source", cascade="all, delete-orphan")
+
+
+class Passage(Base):
+    """
+    A specific excerpt from a Source that is relevant to the research question.
+    Passages are the atomic unit of evidence extraction.
+    """
+    __tablename__ = "research_passages"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    source_id = Column(String(50), ForeignKey("research_sources.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    page_number = Column(Integer, nullable=True)
+    section = Column(String(200), nullable=True)
+    position = Column(Integer, default=0)
+    embedding_id = Column(String(100), nullable=True)  # reference to Qdrant vector
+    extracted_at = Column(DateTime, default=datetime.utcnow)
+
+    source = relationship("Source", back_populates="passages")
+    evidence_items = relationship("Evidence", back_populates="passage", cascade="all, delete-orphan")
+
+
+class Evidence(Base):
+    """
+    An evidence item: a Passage extracted and annotated to support or refute a Claim.
+    Bridge between raw passages and structured claims.
+    """
+    __tablename__ = "research_evidence"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    passage_id = Column(String(50), ForeignKey("research_passages.id", ondelete="CASCADE"), nullable=False)
+    claim_id = Column(String(50), ForeignKey("research_claims.id", ondelete="SET NULL"), nullable=True)
+    relation = Column(String(20), nullable=False)  # supports, contradicts, contextualizes
+    confidence = Column(Integer, default=80)  # 0-100
+    extracted_by = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    extracted_at = Column(DateTime, default=datetime.utcnow)
+
+    passage = relationship("Passage", back_populates="evidence_items")
+    claim = relationship("Claim", back_populates="evidence")
+
+
+class Claim(Base):
+    """
+    A specific, verifiable assertion derived from research evidence.
+    Claims can support, contradict, or derive from other claims.
+    """
+    __tablename__ = "research_claims"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=False)
+    text = Column(Text, nullable=False)
+    claim_type = Column(String(50), default="finding")  # finding, hypothesis, conclusion, contradiction
+    confidence = Column(Integer, default=50)  # 0-100, computed from evidence
+    supporting_count = Column(Integer, default=0)
+    contradicting_count = Column(Integer, default=0)
+    verification_status = Column(String(20), default="unverified")  # unverified, verified, disputed, overturned
+    parent_claim_id = Column(String(50), ForeignKey("research_claims.id", ondelete="SET NULL"), nullable=True)
+    reviewed_by_user = Column(Boolean, default=False)
+    user_verdict = Column(String(20), nullable=True)  # accepted, rejected, needs_revision
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    question = relationship("ResearchQuestion", back_populates="claims")
+    evidence = relationship("Evidence", back_populates="claim")
+    parent_claim = relationship("Claim", remote_side="Claim.id", backref="child_claims")
+
+
+# ─── Thesis Editor ─────────────────────────────────────────────────────────
+
+class Thesis(Base):
+    """A thesis document stored as Syncfusion SFDT format for the word processor."""
+    __tablename__ = "theses"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(500), nullable=False, default="Untitled Thesis")
+    # Syncfusion Document Editor content (SFDT JSON format)
+    content = Column(Text, nullable=False, default="{}")
+    # Plain-text version for search
+    plain_text = Column(Text, nullable=True)
+    # Metadata
+    word_count = Column(Integer, default=0)
+    page_count = Column(Integer, default=0)
+    format_version = Column(String(20), default="25")  # Syncfusion format version
+    # Status
+    status = Column(String(30), default="draft")  # draft, in_review, submitted, archived
+    # Auto-save tracking
+    last_auto_save_at = Column(DateTime, nullable=True)
+    # Yjs CRDT state for conflict-free collaborative editing
+    yjs_state = Column(LargeBinary, nullable=True)  # Full Yjs document state
+    yjs_state_vector = Column(LargeBinary, nullable=True)  # State vector for incremental sync
+    # Version snapshots (JSON array of {version, content, created_at})
+    version_history = Column(FlexibleJSONB, default=list)
+    # Associated research question
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="theses")
+    question = relationship("ResearchQuestion", backref="theses")
+
+
+# ─── Performance Indexes ─────────────────────────────────────────────────────
+# Composite indexes for common query patterns to avoid full table scans.
+
+Index("ix_theses_user_id", Thesis.user_id)
+Index("ix_theses_status", Thesis.user_id, Thesis.status)
+Index("ix_saved_papers_user_id", SavedPaper.user_id)
+Index("ix_saved_queries_user_id", SavedQuery.user_id)
+Index("ix_notes_user_id", Note.user_id)
+Index("ix_notifications_user_read", Notification.user_id, Notification.is_read)
+Index("ix_search_history_user_id", SearchHistory.user_id)
+Index("ix_deep_research_interaction_id", DeepResearchSession.interaction_id)
+# Evidence layer indexes
+Index("ix_rql_user_id", ResearchQuestion.user_id)
+Index("ix_rtask_question_id", ResearchTask.question_id)
+Index("ix_rtask_status", ResearchTask.status)
+Index("ix_rsource_task_id", Source.task_id)
+Index("ix_rsource_doi", Source.doi)
+Index("ix_rpassage_source_id", Passage.source_id)
+Index("ix_revidence_passage_id", Evidence.passage_id)
+Index("ix_revidence_claim_id", Evidence.claim_id)
+Index("ix_rclaim_question_id", Claim.question_id)
+Index("ix_rclaim_parent_id", Claim.parent_claim_id)
+Index("ix_rclaim_verification", Claim.verification_status)
+
+
+# ─── Dynamic Research Teams (AntiGravity-style) ──────────────────────────────
+
+class AgentTeam(Base):
+    """
+    A dynamic research team formed around a research question.
+    Teams are not predefined — they grow and adapt as research progresses.
+    
+    Inspired by Google AntiGravity's Teamwork pattern:
+    - A Team Lead spawns specialized sub-agents as needed
+    - Agents coordinate via shared context and message passing
+    - Team composition evolves during research execution
+    """
+    __tablename__ = "agent_teams"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(200), nullable=True)  # auto-generated team name
+    status = Column(String(20), default="forming")  # forming, active, paused, completed, disbanded
+    team_plan = Column(FlexibleJSONB, default=dict)  # collaborative plan: goals, phases, milestones
+    shared_context = Column(Text, nullable=True)  # accumulated knowledge shared across agents
+    max_agents = Column(Integer, default=8)  # safety cap on agent count
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    question = relationship("ResearchQuestion", backref="agent_teams")
+    agents = relationship("Agent", back_populates="team", cascade="all, delete-orphan")
+
+
+class Agent(Base):
+    """
+    An individual agent within a research team.
+    Agents have roles but are not limited to them — any agent can spawn sub-agents.
+    
+    Agent lifecycle: spawned → active → working → completed/failed/retired
+    
+    Key design: parent_agent_id enables recursive sub-agent spawning,
+    so a "researcher" agent can spawn a "deep-dive" sub-agent when it
+    encounters a complex sub-problem.
+    """
+    __tablename__ = "agents"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    team_id = Column(String(50), ForeignKey("agent_teams.id", ondelete="CASCADE"), nullable=False)
+    parent_agent_id = Column(String(50), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+
+    # Agent identity
+    role = Column(String(50), nullable=False)  # lead, researcher, critic, synthesist, extractor, verifier, scout
+    name = Column(String(100), nullable=True)  # human-readable name (e.g. "Literature Scout #1")
+    description = Column(Text, nullable=True)  # what this agent is responsible for
+
+    # Agent state
+    status = Column(String(20), default="spawned")  # spawned, active, working, completed, failed, retired
+    agent_model = Column(String(100), nullable=True)  # which LLM model powers this agent
+    capabilities = Column(FlexibleJSONB, default=list)  # e.g. ["search", "extract", "synthesize"]
+
+    # Task tracking
+    current_task_id = Column(String(50), ForeignKey("research_tasks.id", ondelete="SET NULL"), nullable=True)
+    tasks_completed = Column(Integer, default=0)
+    tasks_failed = Column(Integer, default=0)
+
+    # Output
+    output_summary = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+
+    # Lifecycle
+    spawned_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    retired_at = Column(DateTime, nullable=True)
+
+    team = relationship("AgentTeam", back_populates="agents")
+    parent_agent = relationship("Agent", remote_side="Agent.id", backref="sub_agents")
+    current_task = relationship("ResearchTask", foreign_keys=[current_task_id])
+    messages_sent = relationship("AgentMessage", foreign_keys="AgentMessage.sender_agent_id", back_populates="sender")
+    messages_received = relationship("AgentMessage", foreign_keys="AgentMessage.receiver_agent_id", back_populates="receiver")
+
+
+class AgentMessage(Base):
+    """
+    Inter-agent communication within a research team.
+    Agents coordinate, share findings, delegate subtasks, and report results.
+    
+    Message types mirror AntiGravity's agent coordination patterns:
+    - task_assigned: Lead assigns a task to a researcher
+    - task_complete: Agent reports task completion with results
+    - spawn_request: Agent asks lead to spawn a sub-agent
+    - finding: Agent shares a discovery with the team
+    - critique: Critic agent provides feedback
+    - synthesis: Agent contributes to the team's synthesis
+    - status_update: Agent reports its current status
+    """
+    __tablename__ = "agent_messages"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    team_id = Column(String(50), ForeignKey("agent_teams.id", ondelete="CASCADE"), nullable=False)
+    sender_agent_id = Column(String(50), ForeignKey("agents.id", ondelete="CASCADE"), nullable=True)  # null = system message
+    receiver_agent_id = Column(String(50), ForeignKey("agents.id", ondelete="CASCADE"), nullable=True)  # null = broadcast
+
+    message_type = Column(String(50), nullable=False)
+    content = Column(Text, nullable=False)
+    message_metadata = Column("metadata", FlexibleJSONB, default=dict)  # structured data
+    priority = Column(Integer, default=0)  # higher = more urgent
+
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    team = relationship("AgentTeam", backref="messages")
+    sender = relationship("Agent", back_populates="messages_sent", foreign_keys=[sender_agent_id])
+    receiver = relationship("Agent", back_populates="messages_received", foreign_keys=[receiver_agent_id])
+
+
+# ─── Dynamic Agent Indexes ───────────────────────────────────────────────────
+Index("ix_ateam_question_id", AgentTeam.question_id)
+Index("ix_ateam_status", AgentTeam.status)
+Index("ix_agent_team_id", Agent.team_id)
+Index("ix_agent_parent_id", Agent.parent_agent_id)
+Index("ix_agent_status", Agent.status)
+Index("ix_agent_role", Agent.role)
+Index("ix_amsg_team_id", AgentMessage.team_id)
+Index("ix_amsg_sender", AgentMessage.sender_agent_id)
+Index("ix_amsg_receiver", AgentMessage.receiver_agent_id)
+Index("ix_amsg_type", AgentMessage.message_type)
+
+# ─── Research Statefulness ────────────────────────────────────────────────────
+
+class ResearchAuditLog(Base):
+    """Immutable audit trail for all state transitions in the research system.
+    Records every status change with who did it, when, and why."""
+    __tablename__ = "research_audit_log"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    # What changed (exactly one of these is set)
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=True)
+    task_id = Column(String(50), ForeignKey("research_tasks.id", ondelete="SET NULL"), nullable=True)
+    team_id = Column(String(50), ForeignKey("agent_teams.id", ondelete="SET NULL"), nullable=True)
+    agent_id = Column(String(50), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    # Transition details
+    entity_type = Column(String(30), nullable=False)  # question, task, team, agent
+    entity_id = Column(String(50), nullable=False)
+    from_status = Column(String(30), nullable=True)  # null for creation
+    to_status = Column(String(30), nullable=False)
+    reason = Column(Text, nullable=True)
+    actor = Column(String(100), nullable=True)  # user_id, agent_id, "system", "scheduler"
+    # Context snapshot
+    log_metadata = Column("metadata", FlexibleJSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AgentMemory(Base):
+    """Persistent memory for each agent across tasks.
+    Agents learn from their discoveries and share knowledge."""
+    __tablename__ = "agent_memory"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    agent_id = Column(String(50), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    memory_type = Column(String(30), nullable=False)  # finding, rejected_lead, strategy, context, entity
+    content = Column(Text, nullable=False)
+    # Relevance scoring
+    confidence = Column(Integer, default=80)  # 0-100
+    access_count = Column(Integer, default=0)
+    # Source tracking
+    source_task_id = Column(String(50), ForeignKey("research_tasks.id", ondelete="SET NULL"), nullable=True)
+    source_claim_id = Column(String(50), ForeignKey("research_claims.id", ondelete="SET NULL"), nullable=True)
+    # Lifecycle
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime, nullable=True)  # optional TTL for ephemeral memories
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    agent = relationship("Agent", backref="memories")
+    source_task = relationship("ResearchTask", foreign_keys=[source_task_id])
+
+
+class ResearchCheckpoint(Base):
+    """Serialized snapshot of full research state for pause/resume."""
+    __tablename__ = "research_checkpoints"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=False)
+    team_id = Column(String(50), ForeignKey("agent_teams.id", ondelete="SET NULL"), nullable=True)
+    # Snapshot
+    trigger = Column(String(50), nullable=False)  # auto, manual, pause, complete, error
+    snapshot = Column(FlexibleJSONB, nullable=False)  # full state serialization
+    summary = Column(Text, nullable=True)
+    # Metadata
+    task_count = Column(Integer, default=0)
+    source_count = Column(Integer, default=0)
+    claim_count = Column(Integer, default=0)
+    agent_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    question = relationship("ResearchQuestion", backref="checkpoints")
+
+
+class ResearchTaskSchedule(Base):
+    """Tracks DAG execution state for task dependency resolution."""
+    __tablename__ = "research_task_schedules"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(String(50), ForeignKey("research_tasks.id", ondelete="CASCADE"), nullable=False)
+    # DAG state
+    is_ready = Column(Boolean, default=False)  # True when all deps are completed
+    is_blocked = Column(Boolean, default=False)  # True when a dep failed
+    blocked_by = Column(FlexibleJSONB, default=list)  # task IDs that are blocking
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    # Execution window
+    scheduled_at = Column(DateTime, nullable=True)  # when it became ready
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    timeout_seconds = Column(Integer, default=300)  # per-task timeout
+
+    question = relationship("ResearchQuestion", backref="task_schedules")
+    task = relationship("ResearchTask", backref="schedule")
+
+    def __init__(self, **kwargs):
+        if "metadata" in kwargs and "schedule_metadata" not in kwargs:
+            kwargs["schedule_metadata"] = kwargs.pop("metadata")
+        super().__init__(**kwargs)
+
+
+# ─── Statefulness Indexes ────────────────────────────────────────────────────
+Index("ix_audit_log_question", ResearchAuditLog.question_id)
+Index("ix_audit_log_entity", ResearchAuditLog.entity_type, ResearchAuditLog.entity_id)
+Index("ix_audit_log_created", ResearchAuditLog.created_at)
+Index("ix_agent_memory_agent_id", AgentMemory.agent_id)
+Index("ix_agent_memory_type", AgentMemory.memory_type)
+Index("ix_checkpoint_question_id", ResearchCheckpoint.question_id)
+Index("ix_task_schedule_question", ResearchTaskSchedule.question_id)
+Index("ix_task_schedule_ready", ResearchTaskSchedule.question_id, ResearchTaskSchedule.is_ready)
+Index("ix_task_schedule_task", ResearchTaskSchedule.task_id)
+
+# ─── Research Durability ──────────────────────────────────────────────────────
+
+class ResearchSessionState(Base):
+    """Persistent session state — replaces in-memory _active_sessions dict.
+    Survives server restarts. Enables crash recovery."""
+    __tablename__ = "research_session_states"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="CASCADE"), nullable=False, unique=True)
+    # Session lifecycle
+    status = Column(String(20), default="idle")  # idle, running, paused, completed, failed, recovering
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    paused_at = Column(DateTime, nullable=True)
+    # Progress tracking
+    total_tasks = Column(Integer, default=0)
+    completed_tasks = Column(Integer, default=0)
+    failed_tasks = Column(Integer, default=0)
+    batches_run = Column(Integer, default=0)
+    current_batch = Column(FlexibleJSONB, default=list)  # task IDs in current batch
+    # Error state
+    last_error = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    # Heartbeat — if heartbeat is stale, session is orphaned
+    heartbeat_at = Column(DateTime, nullable=True)
+    heartbeat_interval = Column(Integer, default=30)  # seconds
+    # Checkpoint reference
+    last_checkpoint_id = Column(String(50), ForeignKey("research_checkpoints.id", ondelete="SET NULL"), nullable=True)
+    # Metadata
+    session_metadata = Column("metadata", FlexibleJSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    question = relationship("ResearchQuestion", backref="session_state")
+
+
+class TaskExecutionLog(Base):
+    """Write-ahead log for task execution.
+    Records intent to execute BEFORE the work happens.
+    On crash recovery, tasks with 'executing' status but no completion = orphaned."""
+    __tablename__ = "task_execution_logs"
+
+    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    task_id = Column(String(50), ForeignKey("research_tasks.id", ondelete="CASCADE"), nullable=False)
+    session_id = Column(String(50), ForeignKey("research_session_states.id", ondelete="SET NULL"), nullable=True)
+    agent_id = Column(String(50), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    # WAL status
+    status = Column(String(20), default="planned")  # planned, executing, completed, failed, orphaned
+    # Timing
+    planned_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    # Results
+    result_summary = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    # Idempotency
+    idempotency_key = Column(String(100), nullable=True, index=True)  # task_id + attempt
+    attempt_number = Column(Integer, default=1)
+    # Timeout
+    timeout_seconds = Column(Integer, default=300)
+    timeout_at = Column(DateTime, nullable=True)
+
+    task = relationship("ResearchTask", backref="execution_logs")
+    session = relationship("ResearchSessionState", backref="execution_logs")
+
+
+# ─── Durability Indexes ──────────────────────────────────────────────────────
+Index("ix_session_state_question", ResearchSessionState.question_id)
+Index("ix_session_state_status", ResearchSessionState.status)
+Index("ix_session_state_heartbeat", ResearchSessionState.heartbeat_at)
+Index("ix_exec_log_task_id", TaskExecutionLog.task_id)
+Index("ix_exec_log_session_id", TaskExecutionLog.session_id)
+Index("ix_exec_log_status", TaskExecutionLog.status)
+Index("ix_exec_log_idempotency", TaskExecutionLog.idempotency_key)
+
+
+# ─── pgvector Models ──────────────────────────────────────────────────────────
+try:
+    from pgvector.sqlalchemy import Vector
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
+
+VectorType = Vector(384) if HAS_PGVECTOR and not os.environ.get("TESTING") else DB_JSON
+
+
+class QueryEmbedding(Base):
+    """Vector embeddings for user queries and research interactions."""
+    __tablename__ = "query_embeddings"
+
+    id = Column(String(100), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    query_id = Column(String(100), index=True, nullable=False)
+    user_id = Column(String(100), index=True, nullable=True)
+    text = Column(Text, nullable=False)
+    query_metadata = Column("metadata", FlexibleJSONB, default=dict)
+    embedding = Column(VectorType, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PaperEmbedding(Base):
+    """Vector embeddings for scientific papers and RAG retrieval."""
+    __tablename__ = "paper_embeddings"
+
+    id = Column(String(100), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    paper_id = Column(String(100), index=True, nullable=False)
+    collection_name = Column(String(100), default="research_queries", index=True)
+    title = Column(Text, nullable=False)
+    abstract = Column(Text, nullable=True)
+    authors = Column(FlexibleJSONB, default=list)
+    year = Column(Integer, nullable=True)
+    citations = Column(Integer, default=0)
+    embedding = Column(VectorType, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+

@@ -91,13 +91,15 @@ async def send_ghost_invite(
     msg.attach(MIMEText(html_body, "html"))
 
     try:
+        use_tls = settings.SMTP_PORT == 465
         await aiosmtplib.send(
             msg,
             hostname=settings.SMTP_HOST,
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            start_tls=True,
+            use_tls=use_tls,
+            start_tls=not use_tls,
         )
         logger.info(f"Ghost invite email sent to {recipient_email}")
         return True

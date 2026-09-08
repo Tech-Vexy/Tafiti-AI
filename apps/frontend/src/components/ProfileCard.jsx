@@ -1,6 +1,6 @@
 import React from 'react';
 import { User, School, Quote, Activity, Award, Settings, LogOut } from 'lucide-react';
-import { useClerk, useUser } from '@clerk/clerk-react';
+import { useClerk, useUser } from '@clerk/nextjs';
 
 export const ProfileCard = ({ user }) => {
     const clerk = useClerk();

@@ -5,6 +5,9 @@ from functools import wraps
 import hashlib
 
 from app.core.config import settings
+from app.core.logger import get_logger
+
+logger = get_logger("cache")
 
 
 class RedisCache:
@@ -33,42 +36,52 @@ class RedisCache:
             if value:
                 return json.loads(value)
         except Exception as e:
-            print(f"Redis get error: {e}")
+            logger.warning(f"Redis get error for key '{key}': {e}")
         return None
-    
-    async def set(self, key: str, value: Any, ttl: int = None):
+
+    async def set(self, key: str, value: Any, ttl: int = None, expire: int = None):
         if not self.redis:
             return
-        
+
         try:
-            ttl = ttl or settings.CACHE_TTL
+            ttl = ttl or expire or settings.CACHE_TTL
             await self.redis.setex(
                 key,
                 ttl,
                 json.dumps(value, default=str)
             )
         except Exception as e:
-            print(f"Redis set error: {e}")
-    
+            logger.warning(f"Redis set error for key '{key}': {e}")
+
     async def delete(self, key: str):
         if not self.redis:
             return
-        
+
         try:
             await self.redis.delete(key)
         except Exception as e:
-            print(f"Redis delete error: {e}")
-    
+            logger.warning(f"Redis delete error for key '{key}': {e}")
+
+    async def ping(self):
+        if not self.redis:
+            raise ConnectionError("Redis not connected")
+        await self.redis.ping()
+
     async def clear_pattern(self, pattern: str):
         if not self.redis:
             return
-        
+
         try:
-            keys = await self.redis.keys(pattern)
-            if keys:
-                await self.redis.delete(*keys)
+            # Use SCAN instead of KEYS to avoid blocking Redis in production
+            cursor = 0
+            while True:
+                cursor, keys = await self.redis.scan(cursor=cursor, match=pattern, count=100)
+                if keys:
+                    await self.redis.delete(*keys)
+                if cursor == 0:
+                    break
         except Exception as e:
-            print(f"Redis clear pattern error: {e}")
+            logger.warning(f"Redis clear_pattern error for '{pattern}': {e}")
     
     def make_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate cache key from prefix and arguments"""

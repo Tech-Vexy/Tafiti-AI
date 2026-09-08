@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Global keyboard shortcuts hook.
  *

@@ -1,9 +1,12 @@
 from fastapi import HTTPException, Request
 import time
 from collections import defaultdict
+
 import asyncio
 
 from app.core.cache import cache
+
+
 
 
 class RateLimiter:
@@ -16,8 +19,8 @@ class RateLimiter:
         identifier: str,
         max_requests: int,
         window_seconds: int
-    ) -> bool:
-        """Check if request is allowed under rate limit"""
+    ) -> tuple[bool, int]:
+        """Check if request is allowed. Returns (allowed, remaining)."""
         now = time.time()
         
         # Get from Redis if available
@@ -28,7 +31,8 @@ class RateLimiter:
             if count == 1:
                 await cache.redis.expire(key, window_seconds)
             
-            return count <= max_requests
+            remaining = max(0, max_requests - count)
+            return count <= max_requests, remaining
         
         # Fallback to in-memory
         request_times = self.requests[identifier]
@@ -41,11 +45,13 @@ class RateLimiter:
         ]
         
         # Check limit
-        if len(self.requests[identifier]) >= max_requests:
-            return False
+        current = len(self.requests[identifier])
+        if current >= max_requests:
+            return False, 0
         
         self.requests[identifier].append(now)
-        return True
+        remaining = max(0, max_requests - current - 1)
+        return True, remaining
     
     async def cleanup_old_entries(self):
         """Periodic cleanup of old entries"""

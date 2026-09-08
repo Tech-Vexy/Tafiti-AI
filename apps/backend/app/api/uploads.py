@@ -1,8 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 import io
 import pypdf
@@ -12,7 +12,7 @@ import asyncio
 from google import genai
 
 from app.db.session import get_db
-from app.services.pinata_service import get_pinata_service
+from app.services.supabase_storage import upload_file as supabase_upload, get_signed_url
 from app.core.security import get_current_user
 from app.core.subscription import require_trial_or_active
 from app.core.logger import get_logger
@@ -32,8 +32,7 @@ class UploadHistoryItem(BaseModel):
     file_size: int | None = None
     uploaded_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.post("/pdf")
@@ -95,7 +94,20 @@ async def upload_research_pdf(
                                 {"type": "text", "text": "Extract the full text and summarize this document. Please provide the summary first, followed by the extracted text."}
                             ]
                         )
-                        text = interaction.output_text
+                        part_text = interaction.output_text
+                        if not part_text:
+                            outputs = getattr(interaction, "outputs", None)
+                            if outputs and getattr(outputs[-1], "text", None):
+                                part_text = outputs[-1].text
+                            else:
+                                steps = getattr(interaction, "steps", None) or []
+                                for step in reversed(steps):
+                                    parts = getattr(step, "content", None) or []
+                                    texts = [p.text for p in parts if getattr(p, "type", None) == "text" and getattr(p, "text", None)]
+                                    if texts:
+                                        part_text = "\n".join(texts)
+                                        break
+                        text = part_text or ""
 
                     finally:
                         # Best practice: Delete remote file after extraction
@@ -129,15 +141,18 @@ async def upload_research_pdf(
             except Exception as e2:
                 logger.error(f"Fallback Text extraction failed: {str(e2)}")
 
-        # 2. Upload to Pinata
-        pinata = get_pinata_service()
-        cid = await pinata.upload_file(content, file.filename)
+        # 2. Upload to Supabase Storage
+        storage_path = await supabase_upload(
+            file_content=content,
+            filename=file.filename,
+            user_id=current_user["user_id"],
+        )
 
         # 3. Record in DB
         record = UploadedFile(
             user_id=current_user["user_id"],
             filename=file.filename,
-            cid=cid,
+            cid=storage_path,  # Supabase Storage path (replaces IPFS CID)
             file_size=len(content),
         )
         db.add(record)
@@ -145,7 +160,7 @@ async def upload_research_pdf(
 
         return {
             "filename": file.filename,
-            "cid": cid,
+            "storage_path": storage_path,
             "extracted_text": text[:5000],
             "full_text_length": len(text),
         }
@@ -153,7 +168,7 @@ async def upload_research_pdf(
         raise
     except Exception as e:
         logger.error(f"PDF upload failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
     finally:
         await file.close()
 
@@ -162,7 +177,7 @@ async def upload_research_pdf(
 async def get_upload_history(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),
 ):
     """Return the current user's PDF upload history, newest first."""
     result = await db.execute(
@@ -172,3 +187,29 @@ async def get_upload_history(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+@router.get("/{file_id}/download")
+async def download_file(
+    file_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a signed download URL for an uploaded file."""
+    result = await db.execute(
+        select(UploadedFile).where(
+            UploadedFile.id == file_id,
+            UploadedFile.user_id == current_user["user_id"],
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not record.cid:
+        raise HTTPException(status_code=404, detail="File storage path not available")
+
+    url = await get_signed_url(record.cid)
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to generate download URL")
+
+    return {"download_url": url, "filename": record.filename}

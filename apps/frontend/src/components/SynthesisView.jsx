@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, Loader2, Quote, BookOpen, ChevronRight, FileText, Printer, Download, Globe } from 'lucide-react';
+import React from 'react';
+import { Sparkles, Loader2, BookOpen, FileText, Printer, Download, Globe } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import CitationExportPanel from './CitationExportPanel';
 

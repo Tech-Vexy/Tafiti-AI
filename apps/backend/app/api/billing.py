@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import hmac
 import hashlib
@@ -68,7 +68,7 @@ async def verify_subscription(
         if user:
             user.subscription_status = "active"
             # Subscription lasts 1 month
-            user.subscription_ends_at = datetime.utcnow() + timedelta(days=30)
+            user.subscription_ends_at = datetime.now(timezone.utc) + timedelta(days=30)
             user.paystack_customer_id = verification_data.get("customer", {}).get("customer_code")
             await db.commit()
             return {"status": "success", "message": "Subscription activated"}
@@ -110,7 +110,7 @@ async def paystack_webhook(
         
         if user:
             user.subscription_status = "active"
-            user.subscription_ends_at = datetime.utcnow() + timedelta(days=30)
+            user.subscription_ends_at = datetime.now(timezone.utc) + timedelta(days=30)
             await db.commit()
             logger.info(f"Subscription activated via webhook for {email}")
             

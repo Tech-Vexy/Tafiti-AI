@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 from app.db.session import get_db
@@ -40,11 +40,11 @@ async def get_current_user_info(
             logger.info(f"User {current_user['user_id']} not found, creating record...")
             logger.info(f"Current user data for creation: {current_user}")
             try:
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 trial_days = 7
                 email = current_user.get("email") or ""
                 # Admin auto-assignment: known admin email always gets superuser on first login
-                ADMIN_EMAILS = {"eveliaveldrine@gmail.com"}
+                ADMIN_EMAILS = set(app_settings.ADMIN_EMAILS)
                 is_admin = email.lower() in ADMIN_EMAILS
 
                 # New users start as "inactive" (no trial yet).
@@ -69,37 +69,11 @@ async def get_current_user_info(
                 await db.rollback()
                 raise create_error
         
-        # Calculate real-time metrics
+        # Calculate real-time metrics using a single batched query with scalar subqueries.
         try:
             from sqlalchemy import func
             from app.models.database import SavedPaper, Note, SavedQuery, Notification
-            
-            # ⚡ Bolt Optimization: Batching sequential metric queries into a single database call using scalar_subquery().
-            # Expected Impact: Reduces database roundtrips from 4 to 1, significantly improving the response time of the /me endpoint.
-            stmt = select(
-                select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery().label("publications_count"),
-                select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery().label("total_citations"),
-                select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery().label("queries_count"),
-                select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery().label("notes_count"),
-                select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery().label("unread_count")
-            )
-            
-            result = await db.execute(stmt)
-            row = result.fetchone()
-            
-            publications_count = row.publications_count if row and row.publications_count is not None else 0
-            total_citations = row.total_citations if row and row.total_citations is not None else 0
-            queries_count = row.queries_count or 0
-            notes_count = row.notes_count or 0
-            unread_count = row.unread_count or 0
-            
-            user.citation_count = int(total_citations)
-            user.publications_count = int(publications_count)
-            user.interest_score = queries_count + notes_count
-            user.notification_count = unread_count
-            # ⚡ Bolt: Batch sequential database queries using scalar subqueries.
-            # Reduces 4 separate database round-trips into a single select statement,
-            # improving API latency for the core `/me` profile endpoint.
+
             sq_publications = select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery()
             sq_citations = select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery()
             sq_queries = select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery()
@@ -107,43 +81,15 @@ async def get_current_user_info(
             sq_notifications = select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery()
 
             metrics_result = await db.execute(
-                select(
-                    sq_publications,
-                    sq_citations,
-                    sq_queries,
-                    sq_notes,
-                    sq_notifications
-                )
+                select(sq_publications, sq_citations, sq_queries, sq_notes, sq_notifications)
             )
             row = metrics_result.fetchone()
 
-            publications_count = row[0] if row and row[0] is not None else 0
-            total_citations = row[1] if row and row[1] is not None else 0
-            queries_count = row[2] if row and row[2] is not None else 0
-            notes_count = row[3] if row and row[3] is not None else 0
-            unread_count = row[4] if row and row[4] is not None else 0
-            
-            user.citation_count = int(total_citations)
-            user.publications_count = int(publications_count)
-            user.interest_score = (queries_count or 0) + (notes_count or 0)
-            user.notification_count = unread_count or 0
-            from app.models.database import Notification
-
-            metrics_query = select(
-                select(func.count(SavedPaper.id)).where(SavedPaper.user_id == user.id).scalar_subquery().label("publications_count"),
-                select(func.sum(SavedPaper.citations)).where(SavedPaper.user_id == user.id).scalar_subquery().label("total_citations"),
-                select(func.count(SavedQuery.id)).where(SavedQuery.user_id == user.id).scalar_subquery().label("queries_count"),
-                select(func.count(Note.id)).where(Note.user_id == user.id).scalar_subquery().label("notes_count"),
-                select(func.count(Notification.id)).where(Notification.user_id == user.id, Notification.is_read == False).scalar_subquery().label("unread_count")
-            )
-            metrics_result = await db.execute(metrics_query)
-            metrics_row = metrics_result.fetchone()
-
-            if metrics_row:
-                user.publications_count = int(metrics_row.publications_count or 0)
-                user.citation_count = int(metrics_row.total_citations or 0)
-                user.interest_score = int((metrics_row.queries_count or 0) + (metrics_row.notes_count or 0))
-                user.notification_count = int(metrics_row.unread_count or 0)
+            if row:
+                user.publications_count = int(row[0] or 0)
+                user.citation_count = int(row[1] or 0)
+                user.interest_score = int((row[2] or 0) + (row[3] or 0))
+                user.notification_count = int(row[4] or 0)
             else:
                 user.publications_count = 0
                 user.citation_count = 0
@@ -162,7 +108,7 @@ async def get_current_user_info(
         logger.error(f"Failed to fetch user profile: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving user profile: {str(e)}"
+            detail="An error occurred while retrieving your profile"
         )
 
 
@@ -261,7 +207,7 @@ async def update_user_settings(
         settings = UserSettings(user_id=current_user["user_id"])
         db.add(settings)
     
-    update_data = settings_update.dict(exclude_unset=True)
+    update_data = settings_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(settings, field, value)
 

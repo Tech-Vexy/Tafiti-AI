@@ -10,7 +10,7 @@ Usage in router:
         _: dict = Depends(require_trial_or_active),
     ):
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -57,13 +57,13 @@ async def require_trial_or_active(
     if (
         user.subscription_status == "trialing"
         and user.trial_ends_at is not None
-        and user.trial_ends_at > datetime.utcnow()
+        and user.trial_ends_at > datetime.now(timezone.utc)
     ):
         return current_user
 
     # ── Trial expired ─────────────────────────────────────────────────────────
     if user.subscription_status == "trialing" and (
-        user.trial_ends_at is None or user.trial_ends_at <= datetime.utcnow()
+        user.trial_ends_at is None or user.trial_ends_at <= datetime.now(timezone.utc)
     ):
         logger.info(f"Trial expired for user {user.id} — blocking premium feature")
         raise HTTPException(

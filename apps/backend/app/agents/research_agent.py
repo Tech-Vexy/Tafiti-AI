@@ -1,28 +1,17 @@
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Optional
+import asyncio
 
 from agno.agent import Agent
+from agno.models.groq import Groq as GroqModel
+from agno.models.openai import OpenAIChat
 from agno.models.message import Message
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.arxiv import ArxivTools
-from agno.db.sqlite import SqliteDb
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.arxiv import ArxivTools
+from agno.db.postgres import PostgresDb
 from pydantic import BaseModel
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from typing import List, Dict, Any, Optional, AsyncIterator, TypedDict, Annotated
-import asyncio
-from langchain_core.messages import HumanMessage, SystemMessage
-from typing import List, Dict, Any, Optional, AsyncIterator
 import json
 import re
-import operator
-
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -51,67 +40,47 @@ class GapAnalysisGap(BaseModel):
 class GapAnalysisOutput(BaseModel):
     summary: str
     gaps: list[GapAnalysisGap]
-class AgentState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
 
 class ResearchAgent:
-    def __init__(self, provider: str = None, model: str = None):
-        self.provider = provider or settings.DEFAULT_LLM_PROVIDER
-        self.model = model or settings.DEFAULT_LLM_MODEL
+    def __init__(self, provider: str | None = None, model: str | None = None):
+        self.provider = provider or "gemini"
+        self.model = model or settings.GEMINI_DEFAULT_MODEL
 
-        # Agno model string: "provider:model_id"
-        # However, for groq, openai, google, we can use canonical strings
+        # Build Agno 2.x model object
+        self.model_obj = self._build_model()
+
+    def _build_model(self):
+        """Build the appropriate Agno 2.x model instance."""
         if self.provider == "gemini":
-            self.model_str = f"google:{self.model or settings.GEMINI_DEFAULT_MODEL}"
-        elif self.provider == "groq":
-            self.model_str = f"groq:{self.model}"
+            from agno.models.google import Gemini
+            model_id = self.model or settings.GEMINI_DEFAULT_MODEL
+            if "deep-research" in (model_id or ""):
+                model_id = "gemini-3.5-pro"
+            return Gemini(id=model_id)
+        elif self.provider == "nvidia":
+            from agno.models.openai import OpenAIChat
+            return OpenAIChat(
+                id=self.model or settings.NVIDIA_DEFAULT_MODEL,
+                base_url=settings.NVIDIA_BASE_URL,
+                api_key=settings.nvidia_api_key,
+            )
+        elif self.provider == "openrouter":
+            from agno.models.openai import OpenAIChat
+            return OpenAIChat(
+                id=self.model or settings.OPENROUTER_DEFAULT_MODEL,
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.OPENROUTER_API_KEY,
+            )
         elif self.provider == "openai":
-            self.model_str = f"openai:{self.model}"
+            from agno.models.openai import OpenAIChat
+            return OpenAIChat(id=self.model or "gpt-4o")
         else:
-            self.model_str = f"{self.provider}:{self.model}"
+            from agno.models.google import Gemini
+            return Gemini(id=self.model or settings.GEMINI_DEFAULT_MODEL)
 
         self.temperature = settings.LLM_TEMPERATURE
-    
+
     def _build_context(self, papers: list[PaperBase]) -> str:
-            if self.provider == "groq":
-                base_url = "https://api.groq.com/openai/v1"
-                api_key = settings.GROQ_API_KEY
-            elif self.provider == "openai":
-                base_url = None
-                api_key = settings.OPENAI_API_KEY
-            else:
-                base_url = "http://localhost:11434/v1"
-                api_key = "ollama"
-
-            self.llm = ChatOpenAI(
-                model_name=self.model,
-                temperature=settings.LLM_TEMPERATURE,
-                max_tokens=settings.LLM_MAX_TOKENS,
-                openai_api_base=base_url,
-                openai_api_key=api_key,
-                streaming=True,
-            )
-
-        # Initialize the state graph
-        workflow = StateGraph(AgentState)
-
-        # Define the nodes
-        workflow.add_node("agent", self._call_model)
-
-        # Define the edges
-        workflow.add_edge(START, "agent")
-        workflow.add_edge("agent", END)
-
-        # Compile the workflow
-        self.app = workflow.compile()
-
-    async def _call_model(self, state: AgentState):
-        messages = state["messages"]
-        response = await self.llm.ainvoke(messages)
-        # We return a list, because this will get added to the existing list
-        return {"messages": [response]}
-
-    def _build_context(self, papers: List[PaperBase]) -> str:
         context = ""
         for i, paper in enumerate(papers, 1):
             authors = ", ".join(paper.authors) if paper.authors else "Unknown"
@@ -155,6 +124,12 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         parts.append(f"\nQuestion: {query}\n\nProvide a comprehensive synthesis:")
         return "\n\n".join(parts)
 
+    def _get_db(self):
+        """Get Supabase-backed session storage for Agno memory."""
+        if settings.SUPABASE_URL and settings.DATABASE_URL:
+            return PostgresDb(db_url=settings.DATABASE_URL, session_table="agno_sessions")
+        return None
+
     async def synthesize_streaming(
         self,
         query: str,
@@ -167,18 +142,16 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         human_content = self._build_human_message(query, context, rag_context)
 
         agent = Agent(
-            model=self.model_str,
-            system_message=system_prompt
+            model=self.model_obj,
+            instructions=[system_prompt],
+            db=self._get_db(),
+            add_history_to_context=True,
+            num_history_runs=2,
         )
 
         async for event in agent.arun(human_content, stream=True):
             if hasattr(event, "content") and event.content:
                 yield event.content
-        async for event in self.app.astream_events({"messages": messages}, version="v2"):
-            if event["event"] == "on_chat_model_stream":
-                chunk = event["data"]["chunk"]
-                if chunk.content:
-                    yield chunk.content
 
     async def synthesize(
         self,
@@ -191,14 +164,40 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         system_prompt = self._build_system_prompt(output_language=output_language)
         human_content = self._build_human_message(query, context, rag_context)
 
+        # If Deep Research is explicitly configured or requested, run via DeepResearchAgent (Interactions API)
+        if self.provider == "deep-research" or (self.model and "deep-research" in self.model):
+            try:
+                from app.agents.deep_research_agent import get_deep_research_agent
+                dr_agent = get_deep_research_agent()
+                engine = "gemini-max" if (self.model and "max" in self.model) else "gemini"
+                interaction_id = await dr_agent.start_research(
+                    query=f"Synthesize the following academic research papers on '{query}':\n\n{human_content}",
+                    engine=engine,
+                )
+                for _ in range(15):
+                    await asyncio.sleep(2)
+                    status_info = await dr_agent.get_research_status(interaction_id)
+                    if status_info["status"] == "completed" and status_info.get("output"):
+                        return {
+                            "answer": status_info["output"],
+                            "sources_used": list(range(1, len(papers) + 1)),
+                            "model": self.model,
+                            "provider": "deep-research",
+                            "interaction_id": interaction_id,
+                        }
+                    elif status_info["status"] == "failed":
+                        logger.warning(f"Deep research synthesis failed: {status_info.get('error')}, falling back to pro model")
+                        break
+            except Exception as dr_err:
+                logger.warning(f"Deep research agent invocation error: {dr_err}, falling back to pro model")
+
         agent = Agent(
-            model=self.model_str,
-            system_message=system_prompt
+            model=self.model_obj,
+            instructions=[system_prompt],
+            db=self._get_db(),
         )
 
         response = await agent.arun(human_content)
-        state = await self.app.ainvoke({"messages": messages})
-        answer = state["messages"][-1].content
 
         return {
             "answer": response.content,
@@ -209,41 +208,27 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     
     async def extract_key_concepts(self, text: str) -> list[str]:
         agent = Agent(
-            model=self.model_str,
-            system_message="Extract 3-5 key concepts/topics from the following text.",
+            model=self.model_obj,
+            instructions=["Extract 3-5 key concepts/topics from the following text."],
             output_schema=KeyConceptsOutput
         )
         
         response = await agent.arun(text)
-        return response.content.concepts
+        if response and response.content and hasattr(response.content, "concepts"):
+            return response.content.concepts
+        return []
     
     async def suggest_follow_up(self, query: str, answer: str) -> list[str]:
         agent = Agent(
-            model=self.model_str,
-            system_message="Based on the research query and answer, suggest 3 relevant follow-up research questions.",
+            model=self.model_obj,
+            instructions=["Based on the research query and answer, suggest 3 relevant follow-up research questions."],
             output_schema=FollowupQuestionsOutput
         )
-        state = await self.app.ainvoke({"messages": messages})
-        concepts_text = state["messages"][-1].content
-        return [c.strip() for c in concepts_text.split(",")]
-    
-    async def suggest_follow_up(self, query: str, answer: str) -> List[str]:
-        messages = [
-            SystemMessage(content="Based on the research query and answer, suggest 3 relevant follow-up research questions. Return as numbered list."),
-            HumanMessage(content=f"Query: {query}\n\nAnswer: {answer[:500]}...")
-        ]
-        
-        state = await self.app.ainvoke({"messages": messages})
-        suggestions_text = state["messages"][-1].content
-        
-        suggestions = []
-        for line in suggestions_text.split("\n"):
-            line = line.strip()
-            if line and (line[0].isdigit() or line.startswith("-")):
-                suggestions.append(line.lstrip("0123456789.-) "))
         
         response = await agent.arun(f"Query: {query}\n\nAnswer: {answer[:500]}...")
-        return response.content.questions[:3]
+        if response and response.content and hasattr(response.content, "questions"):
+            return response.content.questions[:3]
+        return []
 
     async def generate_followup_questions(
         self,
@@ -252,22 +237,18 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
     ) -> list[str]:
         """Generate 3-5 follow-up research questions after a synthesis."""
         agent = Agent(
-            model=self.model_str,
-            system_message=(
+            model=self.model_obj,
+            instructions=[(
                 "You are a research advisor. Given the following research context and query, "
                 "generate exactly 4 concise, specific follow-up research questions that would "
                 "deepen understanding of the topic."
-            ),
+            )],
             output_schema=FollowupQuestionsOutput
         )
         try:
-            state = await self.app.ainvoke({"messages": messages})
-            raw = state["messages"][-1].content.strip()
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            questions = json.loads(raw)
-            if isinstance(questions, list):
-                return [str(q) for q in questions[:5]]
+            response = await agent.arun(f"Context: {context}\nQuery: {query}")
+            if response and response.content and hasattr(response.content, "questions"):
+                return response.content.questions[:5]
         except Exception as e:
             logger.warning(f"Follow-up question generation failed: {e}")
         # Fallback
@@ -307,20 +288,28 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         messages = [Message(role=m["role"], content=m["content"]) for m in history[-8:]]
         messages.append(Message(role="user", content=query))
 
+        agent_tools: list[Any] = [DuckDuckGoTools(), ArxivTools()]
+        if settings.PARALLEL_API_KEY:
+            try:
+                from app.services.parallel_service import ParallelTools
+                agent_tools.append(ParallelTools())
+            except Exception as e:
+                logger.warning(f"Could not load ParallelTools: {e}")
+
         agent = Agent(
-            model=self.model_str,
-            system_message=system_content,
-            tools=[DuckDuckGoTools(), ArxivTools()],
-            db=SqliteDb(db_file="tmp/memory.db"),
+            model=self.model_obj,
+            instructions=[system_content],
+            tools=agent_tools,
+            db=self._get_db(),
             add_history_to_context=True,
             num_history_runs=3,
+            enable_user_memories=True,
+            add_memories_to_context=True,
         )
 
-        async for event in self.app.astream_events({"messages": messages}, version="v2"):
-            if event["event"] == "on_chat_model_stream":
-                chunk = event["data"]["chunk"]
-                if chunk.content:
-                    yield chunk.content
+        async for event in agent.arun(messages, stream=True):
+            if hasattr(event, "content") and event.content:
+                yield event.content
 
     async def collaborate_research_streaming(
         self,
@@ -344,15 +333,13 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         )
 
         agent = Agent(
-            model=self.model_str,
-            system_message=system_prompt
+            model=self.model_obj,
+            instructions=[system_prompt]
         )
 
-        async for event in self.app.astream_events({"messages": messages}, version="v2"):
-            if event["event"] == "on_chat_model_stream":
-                chunk = event["data"]["chunk"]
-                if chunk.content:
-                    yield chunk.content
+        async for event in agent.arun(f"Query: {query}\n\nContext: {context}", stream=True):
+            if hasattr(event, "content") and event.content:
+                yield event.content
 
     async def explain_paper_impact(
         self,
@@ -364,29 +351,31 @@ Your synthesis should demonstrate critical thinking and scholarly rigor."""
         Returns structured impact data with relevance score and key takeaway.
         """
         agent = Agent(
-            model=self.model_str,
-            system_message=(
+            model=self.model_obj,
+            instructions=[(
                 "You are a research mentor helping a professional understand the relevance "
                 "of academic papers to their specific career field."
-            ),
+            )],
             output_schema=PaperImpactOutput
         )
 
-        state = await self.app.ainvoke({"messages": messages})
-        raw = state["messages"][-1].content.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
+        human_content = f"Paper: {paper.title}\n\nAbstract: {paper.abstract}\n\nCareer Field: {career_field}"
 
+        data: dict[str, Any] = {
+            "impact_summary": f"This paper contributes to research relevant to {career_field}.",
+            "relevance_score": 5,
+            "key_takeaway": paper.title,
+        }
         try:
             response = await agent.arun(human_content)
-            data = response.content.dict()
+            if response and response.content and hasattr(response.content, "model_dump"):
+                dumped = response.content.model_dump()
+                if isinstance(dumped, dict):
+                    data = dict(dumped)
+            elif isinstance(getattr(response, "content", None), dict):
+                data = dict(response.content)
         except Exception as e:
             logger.warning(f"Paper impact explanation failed: {e}")
-            data = {
-                "impact_summary": f"This paper contributes to research relevant to {career_field}.",
-                "relevance_score": 5,
-                "key_takeaway": paper.title,
-            }
         return data
 
     async def analyze_research_gaps(
@@ -416,8 +405,8 @@ untested theory, or an absent interdisciplinary perspective.
 Return between 4 and 7 gaps. Be specific and scholarly. Do NOT invent papers; only analyze what is given."""
 
         agent = Agent(
-            model=self.model_str,
-            system_message=system_prompt,
+            model=self.model_obj,
+            instructions=[system_prompt],
             output_schema=GapAnalysisOutput
         )
 
@@ -427,24 +416,18 @@ Return between 4 and 7 gaps. Be specific and scholarly. Do NOT invent papers; on
 
 Perform the Gap Analysis and return only the JSON object:"""
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
-
-        state = await self.app.ainvoke({"messages": messages})
-        raw_text = state["messages"][-1].content.strip()
-
-        # Strip markdown fences if the LLM wraps in ```json ... ```
-        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
-        raw_text = re.sub(r"\s*```$", "", raw_text)
-
         try:
             response = await agent.arun(user_prompt)
-            return response.content.dict()
+            if response and response.content and hasattr(response.content, "model_dump"):
+                dumped = response.content.model_dump()
+                if isinstance(dumped, dict):
+                    return dict(dumped)
+            elif isinstance(getattr(response, "content", None), dict):
+                return dict(response.content)
+            raise ValueError("LLM response missing structured content")
         except Exception as e:
             logger.error(f"Gap analysis failed: {e}")
             raise ValueError("LLM failed to generate valid gap analysis data.")
 
-def get_research_agent(provider: str = None, model: str = None) -> ResearchAgent:
+def get_research_agent(provider: str | None = None, model: str | None = None) -> ResearchAgent:
     return ResearchAgent(provider=provider, model=model)

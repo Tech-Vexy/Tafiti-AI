@@ -3,6 +3,13 @@ import { Quote, Calendar, Star, ChevronRight, User, Bookmark, ExternalLink, File
 
 // Paper Detail Drawer — full abstract + metadata overlay
 function PaperDrawer({ paper, onClose }) {
+    React.useEffect(() => {
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const h = e => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', h);
+        return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', h); };
+    }, [onClose]);
     const doiUrl = paper.doi
         ? `https://doi.org/${paper.doi}`
         : paper.url || paper.landing_page_url;
@@ -10,8 +17,12 @@ function PaperDrawer({ paper, onClose }) {
 
     return (
         <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Details for ${paper.title}`}
             className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 animate-fade-in"
             onClick={onClose}
+            onKeyDown={e => { if (e.key === "Escape") onClose(); }}
         >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <div
@@ -93,6 +104,7 @@ export const PaperCard = React.memo(function PaperCard({
     paper, onSelect, isSelected, onSave, isSaved, onClip, onImpact, impact, isImpactLoading, onGraph
 }) {
     const [localSaved, setLocalSaved] = useState(isSaved);
+    React.useEffect(() => { setLocalSaved(isSaved); }, [isSaved]);
     const [showImpact, setShowImpact] = useState(false);
     const [showDrawer, setShowDrawer] = useState(false);
 

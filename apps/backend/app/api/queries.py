@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List
@@ -47,7 +47,7 @@ async def create_saved_query(
         user_id=current_user["user_id"],
         title=query_data.title,
         query=query_data.query,
-        papers=[p.dict() for p in query_data.papers],
+        papers=[p.model_dump() for p in query_data.papers],
         answer=query_data.answer,
         tags=query_data.tags
     )
@@ -81,13 +81,13 @@ async def create_saved_query(
     except Exception as e:
         logger.error(f"Failed to create saved query: {str(e)}\n{traceback.format_exc()}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
 
 
 @router.get("/", response_model=List[SavedQueryResponse])
 async def get_saved_queries(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -143,7 +143,7 @@ async def update_saved_query(
     if not query:
         raise HTTPException(status_code=404, detail="Query not found")
     
-    update_data = query_update.dict(exclude_unset=True)
+    update_data = query_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(query, field, value)
     

@@ -187,3 +187,5 @@ export const SupportView = () => {
         </div>
     );
 };
+
+export default SupportView;

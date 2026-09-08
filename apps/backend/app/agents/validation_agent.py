@@ -1,7 +1,7 @@
 import json
 import re
 from typing import List, Dict, Any
-from langchain_core.messages import SystemMessage, HumanMessage
+from agno.agent import Agent
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.schemas import CitationValidation, DeepResearchValidationResponse
@@ -10,36 +10,39 @@ logger = get_logger("validation_agent")
 
 class ValidationAgent:
     def __init__(self, provider: str = None, model: str = None):
-        self.provider = provider or settings.DEFAULT_LLM_PROVIDER
-        self.model = model or settings.DEFAULT_LLM_MODEL
+        self.provider = provider or "openrouter"
+        self.model = model or settings.OPENROUTER_DEFAULT_MODEL
 
-        # We can use the same ChatModel setup logic as the ResearchAgent
-        if self.provider == "gemini":
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            self.llm = ChatGoogleGenerativeAI(
-                model=self.model or "gemini-1.5-pro",
-                temperature=0.1,
-                max_output_tokens=settings.LLM_MAX_TOKENS,
-                google_api_key=settings.GOOGLE_API_KEY,
+        # Build Agno 2.x model object
+        self.model_obj = self._build_model()
+
+    def _build_model(self):
+        """Build the appropriate Agno 2.x model instance."""
+        from agno.models.openai import OpenAIChat
+
+        if self.provider == "openrouter":
+            mid = self.model or settings.OPENROUTER_DEFAULT_MODEL
+            if ":" in mid:
+                mid = mid.split(":", 1)[1]
+            return OpenAIChat(
+                id=mid,
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.OPENROUTER_API_KEY,
+            )
+        elif self.provider == "gemini":
+            from agno.models.google import Gemini
+            return Gemini(id=self.model or settings.GEMINI_DEFAULT_MODEL)
+        elif self.provider == "nvidia":
+            return OpenAIChat(
+                id=self.model or settings.NVIDIA_DEFAULT_MODEL,
+                base_url=settings.NVIDIA_BASE_URL,
+                api_key=settings.nvidia_api_key,
             )
         else:
-            from langchain_openai import ChatOpenAI
-            if self.provider == "groq":
-                base_url = "https://api.groq.com/openai/v1"
-                api_key = settings.GROQ_API_KEY
-            elif self.provider == "openai":
-                base_url = None
-                api_key = settings.OPENAI_API_KEY
-            else:
-                base_url = "http://localhost:11434/v1"
-                api_key = "ollama"
-
-            self.llm = ChatOpenAI(
-                model_name=self.model,
-                temperature=0.1,
-                max_tokens=settings.LLM_MAX_TOKENS,
-                openai_api_base=base_url,
-                openai_api_key=api_key,
+            return OpenAIChat(
+                id=self.model or settings.OPENROUTER_DEFAULT_MODEL,
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.OPENROUTER_API_KEY,
             )
 
     async def validate_research_output(self, interaction_id: str, research_text: str) -> DeepResearchValidationResponse:
@@ -68,20 +71,41 @@ You MUST return your answer as a JSON object with this exact structure:
 }
 Return only the valid JSON object. No markdown formatting, no additional text."""
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Research Report:\n\n{research_text}")
-        ]
+        agent = Agent(
+            model=self.model_obj,
+            instructions=[system_prompt]
+        )
 
         try:
-            response = await self.llm.agenerate([messages])
-            raw_text = response.generations[0][0].text.strip()
+            response = await agent.arun(f"Research Report:\n\n{research_text}")
+            raw_text = response.content.strip()
 
             # Clean markdown formatting if present
             raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
             raw_text = re.sub(r"\s*```$", "", raw_text)
 
-            data = json.loads(raw_text)
+            # Try to parse JSON, with fallback for truncated output
+            try:
+                data = json.loads(raw_text)
+            except json.JSONDecodeError:
+                # Attempt to fix truncated JSON by finding the last complete object
+                logger.warning("JSON parse failed, attempting to extract partial results")
+                # Find all complete { ... } objects in the text
+                import re as _re
+                objects = _re.findall(r'\{[^{}]*\}', raw_text)
+                if objects:
+                    # Reconstruct a valid JSON array from found objects
+                    validations_data = []
+                    for obj_str in objects:
+                        try:
+                            obj = json.loads(obj_str)
+                            validations_data.append(obj)
+                        except json.JSONDecodeError:
+                            continue
+                    data = {"validations": validations_data}
+                else:
+                    raise ValueError(f"Could not parse validation response")
+
             validations_data = data.get("validations", [])
 
             validations = []

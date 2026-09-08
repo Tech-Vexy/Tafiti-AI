@@ -1,305 +1,601 @@
 import React from 'react';
 import {
-    Home,
-    Search,
-    BookOpen,
-    History,
-    Settings,
-    HelpCircle,
-    Menu,
-    X,
-    CreditCard,
-    ArrowUpRight,
-    FileText,
-    User,
-    Bell,
-    CheckCheck,
-    ExternalLink
+    Lightbulb,
 } from 'lucide-react';
-import { Logo, LogoWithText } from './Logo';
+import Image from 'next/image';
+import {
+    AppBar,
+    Toolbar,
+    Typography,
+    IconButton,
+    InputBase,
+    Badge,
+    Avatar,
+    Box,
+    Drawer,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemIcon,
+    ListItemText,
+    Popover,
+    Paper,
+    Divider,
+    useTheme,
+    useMediaQuery,
+    alpha,
+    styled,
+} from '@mui/material';
+import {
+    Menu as MenuIcon,
+    Search as SearchIcon,
+    GridView as GridViewIcon,
+    Notifications as NotificationsIcon,
+    Close as CloseIcon,
+    Check as CheckIcon,
+    ExpandMore as ExpandMoreIcon,
+    Dashboard as DashboardIcon,
+    Folder as FolderIcon,
+    LibraryBooks as LibraryBooksIcon,
+    SmartToy as SmartToyIcon,
+    MenuBook as MenuBookIcon,
+    Link as LinkIcon,
+    Person as PersonIcon,
+} from '@mui/icons-material';
 
-const Layout = ({ children, user, navItems: propNavItems, secondaryNav: propSecondaryNav, unreadNotifications = 0, notifications = [], onMarkRead }) => {
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
-    const [isNotifOpen, setIsNotifOpen] = React.useState(false);
+const Search = styled('div')(({ theme }) => ({
+    position: 'relative',
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    '&:hover': {
+        backgroundColor: '#ffffff',
+    },
+    marginRight: theme.spacing(2),
+    marginLeft: 0,
+    width: '100%',
+    maxWidth: '2xl',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)',
+    [theme.breakpoints.up('sm')]: {
+        marginLeft: theme.spacing(3),
+    },
+}));
 
-    // Auto Theme Detection
-    React.useEffect(() => {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        const handleChange = (e) => {
-            if (e.matches) {
-                document.documentElement.classList.remove('light');
-            } else {
-                document.documentElement.classList.add('light');
-            }
-        };
+const SearchIconWrapper = styled('div')(({ theme }) => ({
+    padding: theme.spacing(0, 2),
+    height: '100%',
+    position: 'absolute',
+    pointerEvents: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+}));
 
-        // Initial check
-        handleChange(mediaQuery);
+const StyledInputBase = styled(InputBase)(({ theme }) => ({
+    color: '#1e293b',
+    width: '100%',
+    '& .MuiInputBase-input': {
+        padding: theme.spacing(1.75, 1, 1.75, 0),
+        paddingLeft: `calc(1em + ${theme.spacing(4)})`,
+        transition: theme.transitions.create('width'),
+        width: '100%',
+        fontSize: '0.875rem',
+        fontWeight: 500,
+        '&::placeholder': {
+            color: '#94a3b8',
+            fontWeight: 500,
+        },
+    },
+}));
 
-        // Listen for changes
-        mediaQuery.addEventListener('change', handleChange);
-        return () => mediaQuery.removeEventListener('change', handleChange);
-    }, []);
+const DRAWER_WIDTH = 288;
 
-    const isTrial = user?.subscription_status === 'trialing';
-    const isActive = user?.subscription_status === 'active';
-    const isExpired = user?.subscription_status === 'expired';
+const TafitiLogo = ({ size = 'md' }) => {
+    const sz = size === 'sm' ? 32 : 40;
+    return (
+        <Box
+            sx={{
+                width: sz,
+                height: sz,
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #2c5f9e 0%, #3d7ac2 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+            }}
+        >
+            <Lightbulb style={{ width: sz / 2, height: sz / 2, color: 'white' }} />
+        </Box>
+    );
+};
 
-    const getTrialStats = () => {
-        if (!user?.created_at || !user?.trial_ends_at) return { daysLeft: 0, progress: 0 };
-        const start = new Date(user.created_at);
-        const end = new Date(user.trial_ends_at);
-        const now = new Date();
+const Layout = ({ children, user, navItems: _propNavItems, secondaryNav: propSecondaryNav, unreadNotifications = 0, notifications = [], onMarkRead }) => {
+    const theme = useTheme();
+    const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
+    const [isSidebarOpen, setIsSidebarOpen] = React.useState(isDesktop);
+    const [notifAnchorEl, setNotifAnchorEl] = React.useState(null);
 
-        const days = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
-        const total = end - start;
-        const elapsed = now - start;
-        const progress = total <= 0 ? 100 : Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+    const displayName = user?.fullName || user?.username || 'Alice Musyoka';
 
-        return { daysLeft: days, progress };
-    };
-
-    const { daysLeft, progress } = getTrialStats();
-
-    const defaultNavItems = [
-        { icon: Home, label: 'Dashboard', id: 'dashboard' },
-        { icon: Search, label: 'Research', id: 'feed' },
-        { icon: BookOpen, label: 'Library', id: 'library' },
-        { icon: FileText, label: 'Notes', id: 'notes' },
-        { icon: History, label: 'History', id: 'history' },
+    const sidebarNavItems = [
+        { icon: DashboardIcon, label: 'Dashboard', id: 'dashboard', active: true },
+        { icon: FolderIcon, label: 'Research Projects', id: 'projects' },
+        { icon: LibraryBooksIcon, label: 'My Library', id: 'library' },
+        { icon: SmartToyIcon, label: 'AI Assistant', id: 'chat' },
+        { icon: MenuBookIcon, label: 'Lit Review', id: 'research-review' },
+        { icon: LinkIcon, label: 'Citation Manager', id: 'citations' },
+        { icon: PersonIcon, label: 'My Profile', id: 'profile' },
     ];
 
-    const navItems = propNavItems || defaultNavItems;
+    const userInitials = displayName
+        .split(' ')
+        .map(n => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
 
-    const secondaryNav = propSecondaryNav || [
-        { icon: Settings, label: 'Settings', onClick: () => { } },
-        { icon: HelpCircle, label: 'Support', onClick: () => { } },
-    ];
+    const handleSidebarToggle = () => setIsSidebarOpen(prev => !prev);
+    const handleSidebarClose = () => setIsSidebarOpen(false);
+    const handleNotificationClick = (e) => setNotifAnchorEl(e.currentTarget);
+    const handleNotificationClose = () => setNotifAnchorEl(null);
+    const notifOpen = Boolean(notifAnchorEl);
+
+    const SidebarContent = (
+        <Box
+            sx={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                p: 2.5,
+                overflow: 'hidden',
+            }}
+            role="presentation"
+        >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4, px: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
+                    <TafitiLogo />
+                    <Typography
+                        variant="h6"
+                        sx={{
+                            fontWeight: 900,
+                            fontSize: '1.25rem',
+                            letterSpacing: '-0.02em',
+                            color: '#1e293b',
+                        }}
+                    >
+                        TAFITI AI
+                    </Typography>
+                </Box>
+                {!isDesktop && (
+                    <IconButton
+                        onClick={handleSidebarClose}
+                        size="small"
+                        sx={{
+                            color: '#64748b',
+                            '&:hover': {
+                                backgroundColor: '#f1f5f9',
+                                color: '#0f172a',
+                            },
+                        }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                )}
+            </Box>
+
+            <nav aria-label="Primary" style={{ flex: 1, overflowY: 'auto', margin: '0 -4px' }}>
+                <List sx={{ py: 0, '& .MuiListItem-root': { p: 0 } }}>
+                    {sidebarNavItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = item.active;
+                        return (
+                            <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
+                                <ListItemButton
+                                    onClick={() => {
+                                        if (propSecondaryNav?.[0]?.onClick && item.id === 'profile') {
+                                            propSecondaryNav[0].onClick('profile');
+                                        }
+                                        if (!isDesktop) handleSidebarClose();
+                                    }}
+                                    selected={isActive}
+                                    sx={{
+                                        py: 1.5,
+                                        px: 2,
+                                        borderRadius: 3,
+                                        mx: 1,
+                                        mb: 0.5,
+                                        fontWeight: isActive ? 600 : 500,
+                                        fontSize: '0.875rem',
+                                        letterSpacing: '-0.01em',
+                                        '&.Mui-selected': {
+                                            backgroundColor: '#2c5f9e',
+                                            color: '#ffffff',
+                                            boxShadow: '0 4px 12px rgba(44, 95, 158, 0.2)',
+                                            '&:hover': {
+                                                backgroundColor: '#234e82',
+                                            },
+                                        },
+                                        '&:not(.Mui-selected)': {
+                                            color: '#475569',
+                                            '&:hover': {
+                                                backgroundColor: '#f1f5f9',
+                                                color: '#0f172a',
+                                            },
+                                        },
+                                    }}
+                                >
+                                    <ListItemIcon
+                                        sx={{
+                                            minWidth: 40,
+                                            color: 'inherit',
+                                            '& .MuiSvgIcon-root': {
+                                                fontSize: '1.25rem',
+                                            },
+                                        }}
+                                    >
+                                        <Icon />
+                                    </ListItemIcon>
+                                    <ListItemText
+                                        primary={item.label}
+                                        primaryTypographyProps={{
+                                            fontSize: '0.875rem',
+                                            fontWeight: isActive ? 600 : 500,
+                                            letterSpacing: '-0.01em',
+                                        }}
+                                    />
+                                </ListItemButton>
+                            </ListItem>
+                        );
+                    })}
+                </List>
+            </nav>
+        </Box>
+    );
 
     return (
-        <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] flex overflow-hidden selection:bg-indigo-500/30">
-            {/* Mesh Gradient Background */}
-            <div className="mesh-gradient opacity-60 pointer-events-none" />
+        <Box
+            sx={{
+                minHeight: '100vh',
+                bgcolor: '#f8fafc',
+                color: '#0f172a',
+                display: 'flex',
+                overflow: 'hidden',
+            }}
+        >
+            <a href="#main-content" className="skip-link">Skip to content</a>
 
-            {/* Sidebar Backdrop for Mobile */}
-            {isSidebarOpen && (
-                <div
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden animate-fade-in"
-                    onClick={() => setIsSidebarOpen(false)}
+            {!isDesktop && isSidebarOpen && (
+                <Box
+                    sx={{
+                        position: 'fixed',
+                        inset: 0,
+                        bgcolor: 'rgba(0,0,0,0.3)',
+                        backdropFilter: 'blur(4px)',
+                        zIndex: (t) => t.zIndex.drawer - 1,
+                    }}
+                    onClick={handleSidebarClose}
                 />
             )}
 
-            {/* Sidebar */}
-            <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-[var(--bg-sidebar)]/80 backdrop-blur-3xl border-r border-white/5 transition-all duration-700 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-                <div className="h-full flex flex-col p-8">
-                    <div className="flex items-center justify-between mb-12">
-                        <LogoWithText />
-                        <button className="lg:hidden text-[var(--text-muted)] hover:text-white transition-colors" onClick={() => setIsSidebarOpen(false)}>
-                            <X className="w-6 h-6" />
-                        </button>
-                    </div>
+            <Drawer
+                variant={isDesktop ? 'persistent' : 'temporary'}
+                open={isSidebarOpen}
+                onClose={!isDesktop ? handleSidebarClose : undefined}
+                sx={{
+                    width: DRAWER_WIDTH,
+                    flexShrink: 0,
+                    '& .MuiDrawer-paper': {
+                        width: DRAWER_WIDTH,
+                        boxSizing: 'border-box',
+                        borderRight: '1px solid #e2e8f0',
+                        backgroundColor: '#ffffff',
+                    },
+                }}
+                ModalProps={{
+                    keepMounted: true,
+                }}
+            >
+                {SidebarContent}
+            </Drawer>
 
-                    <nav className="flex-1 overflow-y-auto custom-scrollbar pr-2 -mr-2 space-y-1">
-                        {/* Group nav items by their `group` prop */}
-                        {(() => {
-                            const groups = {};
-                            navItems.forEach(item => {
-                                const g = item.group || 'Research';
-                                if (!groups[g]) groups[g] = [];
-                                groups[g].push(item);
-                            });
-                            return Object.entries(groups).map(([groupName, items]) => (
-                                <div key={groupName}>
-                                    <div className="px-4 pt-5 pb-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">{groupName}</span>
-                                    </div>
-                                    {items.map((item) => (
-                                        <button
-                                            key={item.label}
-                                            onClick={() => item.onClick && item.onClick(item.id)}
-                                            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group ${item.active
-                                                ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-lg shadow-indigo-500/5'
-                                                : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <item.icon className={`w-4 h-4 shrink-0 ${item.active ? 'text-indigo-400' : 'group-hover:scale-110 group-hover:text-indigo-300 transition-all'}`} />
-                                                <span className="font-semibold tracking-tight text-sm">{item.label}</span>
-                                            </div>
-                                            {item.active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />}
-                                        </button>
-                                    ))}
-                                </div>
-                            ));
-                        })()}
-
-                        <div>
-                            <div className="px-4 pt-5 pb-1.5">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">System</span>
-                            </div>
-                            {secondaryNav.map((item) => (
-                                <button
-                                    key={item.label}
-                                    onClick={() => item.onClick && item.onClick(item.id)}
-                                    className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group ${item.active
-                                        ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-lg shadow-indigo-500/5'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <item.icon className={`w-4 h-4 shrink-0 ${item.active ? 'text-indigo-400' : 'group-hover:scale-110 group-hover:text-emerald-400 transition-all'}`} />
-                                        <span className="font-semibold tracking-tight text-sm">{item.label}</span>
-                                    </div>
-                                    {item.active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />}
-                                </button>
-                            ))}
-                        </div>
-                    </nav>
-
-                    {/* User Section */}
-                    <div className="pt-8 border-t border-white/5">
-                        <div
-                            className="flex items-center justify-between px-2 cursor-pointer group/user hover:bg-white/[0.03] p-2 rounded-2xl transition-all duration-300"
-                            onClick={() => secondaryNav.find(n => n.label === 'Settings')?.onClick?.('profile')}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gradient-to-br from-indigo-500/20 to-emerald-400/20 rounded-2xl flex items-center justify-center text-sm font-black shadow-xl overflow-hidden group-hover/user:scale-105 transition-transform border border-white/10">
-                                    {user?.imageUrl ? (
-                                        <img src={user.imageUrl} alt={user.username} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-indigo-500 text-white">
-                                            {user?.username?.charAt(0).toUpperCase() || <User className="w-6 h-6" />}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-sm font-bold text-white uppercase tracking-tight group-hover/user:text-indigo-300 transition-colors line-clamp-1">{user?.username || 'Researcher'}</span>
-                                    <div className="flex items-center gap-2">
-                                        {isActive ? (
-                                            <span className="text-[11px] font-medium text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">Pro</span>
-                                        ) : isTrial ? (
-                                            <span className="text-[11px] font-medium text-indigo-400 bg-indigo-400/10 px-1.5 py-0.5 rounded">
-                                                Trial · {daysLeft}d left
-                                            </span>
-                                        ) : (
-                                            <span className="text-[11px] font-medium text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded">Expired</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <ArrowUpRight className="w-4 h-4 text-slate-600 group-hover/user:text-indigo-400 transition-all opacity-0 group-hover/user:opacity-100" />
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <main className="flex-1 min-h-screen relative overflow-y-auto custom-scrollbar">
-                {/* Mobile Header */}
-                <header className="sticky top-0 z-40 bg-[var(--bg-main)]/80 backdrop-blur-xl border-b border-white/5 px-4 py-3 sm:p-6 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <button className="lg:hidden p-2 glass-card rounded-xl" onClick={() => setIsSidebarOpen(true)}>
-                            <Menu className="text-white w-6 h-6" />
-                        </button>
-                        <div className="hidden lg:block">
-                            <h1 className="text-sm font-semibold text-slate-500">Tafiti AI</h1>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        {/* Notification Bell */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsNotifOpen(!isNotifOpen)}
-                                className={`p-3 rounded-2xl transition-all duration-300 border ${isNotifOpen ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-white/5 border-white/5 text-slate-500 hover:text-white'}`}
+            <Box
+                component="main"
+                sx={{
+                    flex: 1,
+                    minHeight: '100vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    ml: isDesktop && isSidebarOpen ? `${DRAWER_WIDTH}px` : 0,
+                    transition: (t) => t.transitions.create('margin', {
+                        easing: t.transitions.easing.sharp,
+                        duration: t.transitions.duration.leavingScreen,
+                    }),
+                }}
+            >
+                <AppBar
+                    position="sticky"
+                    elevation={0}
+                    sx={{
+                        bgcolor: '#2c5f9e',
+                        backgroundImage: 'none',
+                        color: 'white',
+                        boxShadow: '0 4px 20px rgba(44, 95, 158, 0.15)',
+                        zIndex: (t) => t.zIndex.appBar,
+                        flexShrink: 0,
+                    }}
+                >
+                    <Toolbar sx={{ minHeight: '72px !important', gap: 1.5, px: { xs: 2, sm: 3 } }}>
+                        {!isDesktop && (
+                            <IconButton
+                                color="inherit"
+                                aria-label="open drawer"
+                                edge="start"
+                                onClick={handleSidebarToggle}
+                                sx={{
+                                    mr: 0,
+                                    bgcolor: 'rgba(255,255,255,0.1)',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
+                                    p: 1.25,
+                                }}
                             >
-                                <Bell className="w-5 h-5" />
-                                {unreadNotifications > 0 && (
-                                    <span className="absolute top-2 right-2 w-4 h-4 bg-indigo-500 border-2 border-[var(--bg-main)] rounded-full text-[10px] font-bold flex items-center justify-center text-white">
-                                        {unreadNotifications}
-                                    </span>
-                                )}
-                            </button>
+                                <MenuIcon />
+                            </IconButton>
+                        )}
 
-                            {isNotifOpen && (
-                                <div className="absolute right-0 mt-4 w-[calc(100vw-2rem)] sm:w-80 max-w-sm glass-card-heavy border-white/10 shadow-2xl z-50 p-2 overflow-hidden animate-slide-up">
-                                    <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                                        <h3 className="text-xs font-semibold text-white">Notifications</h3>
-                                        <span className="text-[11px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-medium">{unreadNotifications} New</span>
-                                    </div>
-                                    <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                                        {notifications.length > 0 ? (
-                                            notifications.map((notif) => (
-                                                <div
-                                                    key={notif.id}
-                                                    className={`p-4 hover:bg-white/5 transition-colors cursor-pointer group border-b border-white/5 last:border-0 ${notif.is_read ? 'opacity-60' : ''}`}
-                                                    onClick={() => {
-                                                        if (!notif.is_read) onMarkRead(notif.id);
-                                                        if (notif.link) window.location.href = notif.link;
-                                                    }}
-                                                >
-                                                    <div className="flex gap-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
-                                                            <Bell className="w-4 h-4 text-indigo-400" />
-                                                        </div>
-                                                        <div className="flex-1 space-y-1">
-                                                            <p className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors leading-tight">
-                                                                {notif.content}
-                                                            </p>
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-[10px] text-slate-500">{new Date(notif.created_at).toLocaleDateString()}</span>
-                                                                {!notif.is_read && <CheckCheck className="w-3 h-3 text-indigo-500" />}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="p-8 text-center">
-                                                <p className="text-xs text-slate-500">No new notifications.</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <Search>
+                            <SearchIconWrapper>
+                                <SearchIcon fontSize="small" />
+                            </SearchIconWrapper>
+                            <StyledInputBase
+                                placeholder="Search topics, papers, or ask AI…"
+                                inputProps={{ 'aria-label': 'search' }}
+                            />
+                        </Search>
 
-                        <div className="lg:hidden flex items-center gap-3">
-                            <Logo size="sm" />
-                            <span className="font-black text-xl tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Tafiti</span>
-                        </div>
-                    </div>
-                </header>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
+                            <IconButton
+                                color="inherit"
+                                title="Grid view"
+                                aria-label="Grid view"
+                                sx={{
+                                    p: 1.5,
+                                    borderRadius: 3,
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+                                }}
+                            >
+                                <GridViewIcon />
+                            </IconButton>
 
-                <div className="relative z-10 h-full pb-20 lg:pb-0">
-                    {children}
-                </div>
-            </main>
+                            <Badge
+                                badgeContent={unreadNotifications > 0 ? (unreadNotifications > 9 ? '9+' : unreadNotifications) : null}
+                                color="error"
+                                sx={{
+                                    '& .MuiBadge-standard': {
+                                        minWidth: 18,
+                                        height: 18,
+                                        fontSize: '0.65rem',
+                                        fontWeight: 800,
+                                        borderRadius: '50%',
+                                        border: '2px solid #2c5f9e',
+                                    },
+                                }}
+                            >
+                                <IconButton
+                                    color="inherit"
+                                    onClick={handleNotificationClick}
+                                    sx={{
+                                        p: 1.5,
+                                        borderRadius: 3,
+                                        bgcolor: 'rgba(255,255,255,0.1)',
+                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
+                                    }}
+                                >
+                                    <NotificationsIcon />
+                                </IconButton>
+                            </Badge>
 
-            {/* Mobile Bottom Navigation — show first 4 Research items + More */}
-            <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-[var(--bg-sidebar)]/95 backdrop-blur-xl border-t border-white/5">
-                <div className="flex items-center justify-around px-1 py-1.5 pb-safe">
-                    {navItems.filter(i => ['feed','chat','discover','library'].includes(i.id)).map((item) => (
-                        <button
-                            key={item.label}
-                            onClick={() => item.onClick && item.onClick(item.id)}
-                            className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all min-w-0 ${item.active ? 'text-indigo-400' : 'text-slate-500'}`}
-                        >
-                            <item.icon className="w-5 h-5 shrink-0" />
-                            <span className="text-[10px] font-semibold truncate max-w-[60px]">{item.label}</span>
-                        </button>
-                    ))}
-                    <button
-                        onClick={() => setIsSidebarOpen(true)}
-                        className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all text-slate-500 ${
-                            navItems.filter(i => !['feed','chat','discover','library'].includes(i.id)).some(i => i.active) ? 'text-indigo-400' : ''
-                        }`}
+                            <Popover
+                                open={notifOpen}
+                                anchorEl={notifAnchorEl}
+                                onClose={handleNotificationClose}
+                                anchorOrigin={{
+                                    vertical: 'bottom',
+                                    horizontal: 'right',
+                                }}
+                                transformOrigin={{
+                                    vertical: 'top',
+                                    horizontal: 'right',
+                                }}
+                                PaperProps={{
+                                    sx: {
+                                        mt: 1.5,
+                                        borderRadius: 4,
+                                        border: '1px solid #e2e8f0',
+                                        boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
+                                        width: { xs: 'calc(100vw - 2rem)', sm: 380 },
+                                        maxWidth: 380,
+                                        overflow: 'hidden',
+                                    },
+                                }}
+                            >
+                                <Box sx={{ p: 2.5, borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Typography variant="caption" sx={{ fontWeight: 800, color: '#1e293b', fontSize: '0.75rem' }}>
+                                        Notifications
+                                    </Typography>
+                                    <Box
+                                        sx={{
+                                            px: 2,
+                                            py: 0.75,
+                                            borderRadius: 999,
+                                            bgcolor: 'rgba(44,95,158,0.1)',
+                                            color: '#2c5f9e',
+                                            fontSize: '0.6875rem',
+                                            fontWeight: 700,
+                                        }}
+                                    >
+                                        {unreadNotifications} New
+                                    </Box>
+                                </Box>
+                                <Box sx={{ maxHeight: 384, overflowY: 'auto' }}>
+                                    {notifications.length > 0 ? (
+                                        notifications.map((notif) => (
+                                            <Box
+                                                key={notif.id}
+                                                onClick={() => {
+                                                    if (!notif.is_read) onMarkRead && onMarkRead(notif.id);
+                                                    if (notif.link) window.location.href = notif.link;
+                                                    handleNotificationClose();
+                                                }}
+                                                sx={{
+                                                    p: 2.5,
+                                                    borderBottom: '1px solid #f1f5f9',
+                                                    '&:last-child': { borderBottom: 0 },
+                                                    cursor: 'pointer',
+                                                    opacity: notif.is_read ? 0.7 : 1,
+                                                    transition: 'background-color 0.2s',
+                                                    '&:hover': { bgcolor: '#f8fafc' },
+                                                }}
+                                            >
+                                                <Box sx={{ display: 'flex', gap: 2 }}>
+                                                    <Box
+                                                        sx={{
+                                                            width: 32,
+                                                            height: 32,
+                                                            borderRadius: 2,
+                                                            bgcolor: 'rgba(44,95,158,0.1)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            flexShrink: 0,
+                                                        }}
+                                                    >
+                                                        <NotificationsIcon sx={{ fontSize: 16, color: '#2c5f9e' }} />
+                                                    </Box>
+                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                        <Typography
+                                                            variant="caption"
+                                                            sx={{
+                                                                fontWeight: 600,
+                                                                color: '#1e293b',
+                                                                lineHeight: 1.4,
+                                                                display: 'block',
+                                                                fontSize: '0.75rem',
+                                                            }}
+                                                        >
+                                                            {notif.content}
+                                                        </Typography>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
+                                                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.625rem', fontWeight: 500 }}>
+                                                                {notif.created_at ? new Date(notif.created_at).toLocaleDateString() : 'Today'}
+                                                            </Typography>
+                                                            {!notif.is_read && <CheckIcon sx={{ fontSize: 14, color: '#2c5f9e' }} />}
+                                                        </Box>
+                                                    </Box>
+                                                </Box>
+                                            </Box>
+                                        ))
+                                    ) : (
+                                        <Box sx={{ p: 8, textAlign: 'center' }}>
+                                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.75rem' }}>
+                                                No new notifications.
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Popover>
+
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 2,
+                                    pl: 2,
+                                    pr: 1,
+                                    py: 0.75,
+                                    borderRadius: 4,
+                                    bgcolor: 'rgba(255,255,255,0.1)',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s',
+                                    '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+                                    flexShrink: 0,
+                                }}
+                            >
+                                <Avatar
+                                    sx={{
+                                        width: 36,
+                                        height: 36,
+                                        borderRadius: 3,
+                                        border: '2px solid rgba(255,255,255,0.4)',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                        background: user?.imageUrl
+                                            ? 'transparent'
+                                            : 'linear-gradient(135deg, #2c5f9e 0%, #3d7ac2 100%)',
+                                        fontSize: '0.6875rem',
+                                        fontWeight: 900,
+                                    }}
+                                    src={user?.imageUrl}
+                                    alt={displayName}
+                                >
+                                    {!user?.imageUrl && userInitials}
+                                </Avatar>
+                                <Box sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', lineHeight: 1.2 }}>
+                                    <Typography
+                                        variant="caption"
+                                        sx={{
+                                            fontWeight: 700,
+                                            color: '#ffffff',
+                                            fontSize: '0.8125rem',
+                                            letterSpacing: '-0.01em',
+                                        }}
+                                    >
+                                        {displayName}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Typography
+                                            variant="caption"
+                                            sx={{
+                                                fontWeight: 500,
+                                                color: 'rgba(255,255,255,0.7)',
+                                                fontSize: '0.6875rem',
+                                            }}
+                                        >
+                                            Dashboard
+                                        </Typography>
+                                        <ExpandMoreIcon sx={{ fontSize: 14, opacity: 0.8 }} />
+                                    </Box>
+                                </Box>
+                            </Box>
+                        </Box>
+                    </Toolbar>
+                </AppBar>
+
+                <Box
+                    id="main-content"
+                    sx={{
+                        flex: 1,
+                        overflowY: 'auto',
+                    }}
+                >
+                    <Box
+                        sx={{
+                            maxWidth: 1500,
+                            mx: 'auto',
+                            pt: 2.5,
+                            pb: 8,
+                            px: { xs: 2, sm: 3, lg: 4 },
+                        }}
                     >
-                        <Menu className="w-5 h-5" />
-                        <span className="text-[10px] font-bold tracking-tight">More</span>
-                    </button>
-                </div>
-            </nav>
-        </div>
+                        {children}
+                    </Box>
+                </Box>
+            </Box>
+        </Box>
     );
 };
 
 export default Layout;
+

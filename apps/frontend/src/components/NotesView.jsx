@@ -5,22 +5,18 @@ import {
     FileText,
     Trash2,
     Save,
-    Clock,
-    Tag as TagIcon,
-    ChevronRight,
     Loader2,
     Calendar,
-    ChevronLeft,
-    Monitor,
     Layout as LayoutIcon,
     Edit3,
     BookOpen,
     Download,
     Printer
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import api from '../api/client';
 
-const NotesView = ({ onRestore }) => {
+const NotesView = ({ onRestore: _onRestore }) => {
     const [notes, setNotes] = useState([]);
     const [activeNote, setActiveNote] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -263,8 +259,35 @@ const NotesView = ({ onRestore }) => {
                             )}
                             {(viewMode === 'preview' || viewMode === 'split') && (
                                 <div className="flex-1 overflow-y-auto p-8 prose prose-invert max-w-none prose-indigo">
-                                    <div className="text-slate-300 whitespace-pre-wrap font-sans">
-                                        {activeNote.content || <p className="text-slate-600 italic">No content to preview.</p>}
+                                    <div className="text-slate-300 font-sans">
+                                        {activeNote.content ? (
+                                            <ReactMarkdown
+                                                components={{
+                                                    p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+                                                    strong: ({ children }) => <strong className="text-indigo-300 font-bold">{children}</strong>,
+                                                    h1: ({ children }) => <h1 className="text-2xl font-black text-white mt-6 mb-3">{children}</h1>,
+                                                    h2: ({ children }) => <h2 className="text-xl font-bold text-white mt-5 mb-2">{children}</h2>,
+                                                    h3: ({ children }) => <h3 className="text-lg font-bold text-white mt-4 mb-2">{children}</h3>,
+                                                    ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 text-slate-300">{children}</ul>,
+                                                    ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 text-slate-300">{children}</ol>,
+                                                    code: ({ children, className }) => {
+                                                        const isInline = !className;
+                                                        return isInline ? (
+                                                            <code className="px-1.5 py-0.5 bg-indigo-500/10 text-indigo-300 rounded text-sm font-mono">{children}</code>
+                                                        ) : (
+                                                            <code className={className}>{children}</code>
+                                                        );
+                                                    },
+                                                    blockquote: ({ children }) => (
+                                                        <blockquote className="border-l-4 border-indigo-500/40 pl-4 py-1 my-3 text-slate-400 italic">{children}</blockquote>
+                                                    ),
+                                                }}
+                                            >
+                                                {activeNote.content}
+                                            </ReactMarkdown>
+                                        ) : (
+                                            <p className="text-slate-600 italic">No content to preview.</p>
+                                        )}
                                     </div>
                                 </div>
                             )}

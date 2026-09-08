@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Lightweight toast notification system.
  * Wrap your app with <ToastProvider>; consume with useToast().
@@ -26,6 +28,8 @@ export const ToastProvider = ({ children }) => {
         setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
+    const dismissAll = useCallback(() => setToasts([]), []);
+
     const add = useCallback((message, type = 'info', duration = 4000) => {
         const id = ++idRef.current;
         setToasts(prev => [...prev.slice(-4), { id, message, type }]); // max 5
@@ -36,10 +40,15 @@ export const ToastProvider = ({ children }) => {
     }, [dismiss]);
 
     const api = {
+        toasts,
+        addToast: add,
+        removeToast: dismiss,
+        clear: dismissAll,
         success: (msg, dur) => add(msg, 'success', dur),
         error:   (msg, dur) => add(msg, 'error', dur ?? 6000),
         info:    (msg, dur) => add(msg, 'info', dur),
         warn:    (msg, dur) => add(msg, 'warn', dur),
+        warning: (msg, dur) => add(msg, 'warn', dur),
         dismiss,
     };
 

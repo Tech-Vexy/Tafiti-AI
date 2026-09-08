@@ -26,12 +26,13 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
     const [maxYear, setMaxYear] = useState('');
     const [minCitations, setMinCitations] = useState(0);
 
-    // Expose focus() to parent
+    // Expose focus()/setQuery() to parent
     useImperativeHandle(ref, () => ({
         focus: () => {
             inputRef.current?.focus();
             inputRef.current?.select();
-        }
+        },
+        setQuery: (q) => setQuery(String(q ?? '')),
     }));
 
     const activeFilterCount = [
@@ -77,12 +78,16 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                     )}
                 </div>
 
+                <label htmlFor="tafiti-search" className="sr-only">Search papers</label>
                 <input
+                    id="tafiti-search"
                     ref={inputRef}
-                    type="text"
+                    type="search"
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     placeholder="What are you researching today?"
+                    aria-label="Search papers"
+                    aria-describedby="search-hint"
                     className="flex-1 bg-transparent border-none outline-none text-base sm:text-lg py-3 pr-2 sm:pr-4 text-[var(--text-main)] placeholder:text-[var(--text-muted)] min-w-0"
                     disabled={isLoading}
                 />
@@ -92,6 +97,9 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                     <button
                         type="button"
                         onClick={() => setShowFilters(f => !f)}
+                        aria-expanded={showFilters}
+                        aria-controls="search-filters-panel"
+                        aria-label={`Advanced filters${activeFilterCount ? `, ${activeFilterCount} active` : ''}`}
                         className={`relative p-3 rounded-xl transition-all duration-300 border ${
                             showFilters || activeFilterCount > 0
                                 ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20'
@@ -124,7 +132,7 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
 
             {/* ── Filter panel ── */}
             {showFilters && (
-                <div className="glass-card-heavy rounded-t-none rounded-b-2xl border-t border-white/5 px-6 py-5 space-y-5 animate-slide-up">
+                <div id="search-filters-panel" role="region" aria-label="Search filters" className="glass-card-heavy rounded-t-none rounded-b-2xl border-t border-white/5 px-6 py-5 space-y-5 animate-slide-up">
                     <div className="flex items-center justify-between">
                         <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                             Advanced Filters
@@ -140,6 +148,9 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                         )}
                     </div>
 
+                    {(minYear && Number(minYear) > Number(maxYear) && maxYear) && (
+                        <p className="text-xs text-amber-400 font-medium -mt-1" role="alert">From year cannot be after To year.</p>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                         {/* Year range */}
                         <div className="space-y-2">
@@ -147,12 +158,14 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                                 From Year
                             </label>
                             <input
+                                id="filter-min-year"
                                 type="number"
                                 min={1900}
                                 max={CURRENT_YEAR}
                                 value={minYear}
                                 onChange={e => setMinYear(e.target.value)}
                                 placeholder={`e.g. 2015`}
+                                aria-label="From year"
                                 className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 transition-all"
                             />
                         </div>
@@ -162,12 +175,14 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                                 To Year
                             </label>
                             <input
+                                id="filter-max-year"
                                 type="number"
                                 min={1900}
                                 max={CURRENT_YEAR}
                                 value={maxYear}
                                 onChange={e => setMaxYear(e.target.value)}
                                 placeholder={`e.g. ${CURRENT_YEAR}`}
+                                aria-label="To year"
                                 className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 transition-all"
                             />
                         </div>
@@ -210,6 +225,7 @@ export const SearchBox = forwardRef(({ onSearch, isLoading }, ref) => {
                 </div>
             )}
 
+            <p id="search-hint" className="sr-only">Press Enter to search, Cmd+K to focus</p>
             {/* Search glow */}
             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/0 via-indigo-500/0 to-emerald-500/0 rounded-2xl blur-lg transition-all duration-500 group-focus-within:from-indigo-500/20 group-focus-within:via-indigo-500/10 group-focus-within:to-emerald-500/20 -z-10" />
         </form>

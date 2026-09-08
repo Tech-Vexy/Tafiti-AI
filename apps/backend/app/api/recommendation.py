@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from pydantic import BaseModel
 from app.services.recommendation_service import recommendation_service
@@ -41,7 +41,7 @@ async def get_recommendations(
 
 @router.get("/recommendations/papers", response_model=List[PaperBase])
 async def get_recommended_papers(
-    limit: int = 30,
+    limit: int = Query(default=30, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -88,7 +88,7 @@ async def get_trending(
 
 @router.get("/recommendations/researchers", response_model=List[UserDiscoveryResponse])
 async def get_similar_researchers(
-    limit: int = 5,
+    limit: int = Query(default=5, ge=1, le=50),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

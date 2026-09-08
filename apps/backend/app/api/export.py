@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.security import get_current_user
 from app.core.logger import get_logger
@@ -116,7 +116,7 @@ def _render_html(req: ExportRequest) -> str:
         authors_line=authors_line,
         query_line=query_line,
         synthesis_paragraphs=paragraphs,
-        date=datetime.utcnow().strftime("%B %d, %Y"),
+        date=datetime.now(timezone.utc).strftime("%B %d, %Y"),
     )
 
 
@@ -138,7 +138,7 @@ async def export_pdf(
         )
     except Exception as e:
         logger.error(f"WeasyPrint render failed: {e}")
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        raise HTTPException(status_code=500, detail="PDF generation failed. Please try again later.")
 
     safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in body.title)[:60]
     filename = f"{safe_title}.pdf"

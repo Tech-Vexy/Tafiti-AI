@@ -92,3 +92,10 @@ out/
 coverage/
 .nyc_output/
 node_modules
+
+turbo_error.log
+
+# Docker
+postgres_data/
+redis_data/
+qdrant_data/

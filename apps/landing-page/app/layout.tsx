@@ -4,6 +4,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import CommandMenu from "@/components/CommandMenu";
+import LegacyHashRedirect from "@/components/LegacyHashRedirect";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -32,9 +34,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <LegacyHashRedirect />
           <Navbar />
           {children}
           <Footer />
+          <CommandMenu />
         </ThemeProvider>
       </body>
     </html>

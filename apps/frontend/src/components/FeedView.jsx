@@ -1,11 +1,11 @@
 import React, { Suspense } from 'react';
+import { Skeleton, SkeletonCard, SkeletonPaperCard } from './ui/Skeleton';
 import { PaperCard } from './PaperCard';
 import { SearchBox } from './SearchBox';
 import { PreferenceForm } from './Recommendations';
-import {
-    Layers, Sparkles, Rocket, ArrowRight, Settings2, Activity,
-    History, Loader2, Globe, CreditCard
-} from 'lucide-react';
+import { Layers, Sparkles, Rocket, ArrowRight, Settings2, Activity, History, Loader2, Globe, CreditCard, Command } from 'lucide-react';
+import { SkeletonHistoryItem } from './ui/Skeleton';
+import { useToast } from '@/hooks/useToast';
 
 const SynthesisView = React.lazy(() =>
     import('./SynthesisView').then(m => ({ default: m.SynthesisView }))
@@ -34,11 +34,12 @@ const LANGUAGES = [
 ];
 
 const SUGGESTED_SEARCHES = [
-    'Malaria vaccine efficacy in sub-Saharan Africa',
-    'Machine learning applications in African agriculture',
-    'Climate change adaptation strategies East Africa',
-    'Mobile health interventions low-resource settings',
-    'Antibiotic resistance patterns Kenya Tanzania',
+    'AI for climate resilience in sub-Saharan agriculture',
+    'mRNA vaccine platforms for tropical diseases',
+    'Digital financial inclusion and mobile money in East Africa',
+    'Renewable energy transitions across the African grid',
+    'Large language models for African languages',
+    'Precision medicine and genomics in African populations',
 ];
 
 export function FeedView({
@@ -78,6 +79,17 @@ export function FeedView({
     handleStartTrial,
     setActiveTab,
 }) {
+    const toast = useToast();
+
+    const runSearch = async (query) => {
+        searchBoxRef?.current?.setQuery?.(query);
+        try {
+            await onSearch(query);
+        } catch {
+            toast.error("That search couldn't be completed. Please try again.");
+        }
+    };
+
     return (
         <div className="space-y-12 animate-reveal">
             <header className="flex items-center justify-between gap-4">
@@ -99,8 +111,15 @@ export function FeedView({
                 </button>
             </header>
 
-            <div className="relative z-10 glass-card-heavy p-2 border-indigo-500/10">
+            <div data-tour="search-bar" className="relative z-10 glass-card-heavy p-2 border-indigo-500/10">
                 <SearchBox ref={searchBoxRef} onSearch={onSearch} isLoading={isLoading} />
+                {isLoading && (
+                    <div role="status" aria-live="polite" aria-label="Loading papers" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+                        <SkeletonPaperCard />
+                        <SkeletonPaperCard />
+                        <SkeletonPaperCard />
+                    </div>
+                )}
             </div>
 
             {showPreferenceForm && (
@@ -121,7 +140,7 @@ export function FeedView({
                                 Results for "{lastQuery}"
                             </h3>
                         </div>
-                        <div className="flex items-center gap-3 flex-wrap">
+                        <div data-tour="synthesize-area" className="flex items-center gap-3 flex-wrap">
                             {/* Language selector */}
                             <div className="relative flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-indigo-500/30 transition-all">
                                 <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
@@ -198,7 +217,7 @@ export function FeedView({
                                 {followupQuestions.map((q, i) => (
                                     <button
                                         key={i}
-                                        onClick={() => onSearch(q)}
+                                        onClick={() => runSearch(q)}
                                         className="text-left px-5 py-3.5 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 text-sm text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all font-medium"
                                     >
                                         {q}
@@ -211,16 +230,6 @@ export function FeedView({
             ) : (
                 /* Empty state with suggested searches */
                 <div className="space-y-8">
-                    <div className="glass-card p-12 sm:p-20 text-center space-y-6 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] transition-colors group cursor-default">
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white/5 rounded-[2.5rem] mx-auto flex items-center justify-center group-hover:rotate-12 transition-transform duration-700">
-                            <Rocket className="text-white/20 w-10 h-10 sm:w-12 sm:h-12" />
-                        </div>
-                        <div className="space-y-2">
-                            <h3 className="text-xl sm:text-2xl font-bold text-white/40">Search for papers to get started.</h3>
-                            <p className="text-sm text-slate-500 max-w-xs mx-auto leading-relaxed">Enter a topic above, or try one of these suggested searches.</p>
-                        </div>
-                    </div>
-
                     {/* Suggested searches */}
                     <div className="space-y-3">
                         <p className="text-xs font-black uppercase tracking-widest text-slate-600 px-1">Suggested searches</p>
@@ -228,7 +237,8 @@ export function FeedView({
                             {SUGGESTED_SEARCHES.map((q, i) => (
                                 <button
                                     key={i}
-                                    onClick={() => onSearch(q)}
+                                    type="button"
+                                    onClick={() => runSearch(q)}
                                     className="text-left px-5 py-3.5 rounded-2xl bg-white/[0.02] border border-white/5 text-sm text-slate-400 hover:bg-indigo-500/5 hover:border-indigo-500/15 hover:text-indigo-300 transition-all font-medium flex items-center justify-between group"
                                 >
                                     <span>{q}</span>
@@ -255,8 +265,9 @@ export function FeedView({
 
                     <div className="grid grid-cols-1 gap-6">
                         {isHistoryLoading ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+                            <div role="status" aria-live="polite" className="space-y-4">
+                                <SkeletonHistoryItem />
+                                <SkeletonHistoryItem />
                             </div>
                         ) : history.length > 0 ? (
                             history.slice(0, 5).map((item) => (
