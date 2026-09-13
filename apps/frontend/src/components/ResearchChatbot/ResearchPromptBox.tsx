@@ -20,7 +20,6 @@ import {
     Atom,
     Users,
     Scale,
-    Sparkles,
 } from 'lucide-react';
 import { RESEARCH_FIELDS, getFieldById, getSuggestionsForField } from './researchFields';
 import useResearchStore from '@/store/useResearchStore';
@@ -467,34 +466,6 @@ export default function ResearchPromptBox({
                     className="w-full bg-transparent border-0 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none resize-none text-[var(--text-main)] placeholder:text-[var(--text-muted)] text-sm sm:text-base font-normal leading-relaxed px-1 min-h-[38px] max-h-[200px]"
                     style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
                 />
-
-                {/* Suggestions contained directly inside the input area */}
-                {!isCompact && !input && (
-                    <div className="mt-2.5 pt-2.5 border-t border-[var(--border-glass)]/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none animate-fade-in pr-2">
-                        <div className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] shrink-0 pl-0.5">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="hidden xs:inline text-[11px]">Suggestions:</span>
-                        </div>
-                        {fieldSuggestions.map((suggestion, idx) => {
-                            const cleanText = suggestion.replace(/^e\.g\.\s*"?/, '').replace(/^Ask a research question or topic\.\.\./, '').replace(/"?\s*$/, '').trim();
-                            if (!cleanText) return null;
-                            return (
-                                <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={() => {
-                                        setInput(cleanText);
-                                        textareaRef.current?.focus();
-                                    }}
-                                    className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[var(--btn-surface)] hover:bg-[var(--sidebar-hover)] text-[var(--text-dim)] hover:text-[var(--text-main)] border border-[var(--border-glass)] hover:border-sky-500/40 transition-all max-w-[280px] truncate text-left"
-                                    title={`Click to use: "${cleanText}"`}
-                                >
-                                    <span className="truncate">{cleanText}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
 
                 {/* Controls Bar in Input Area */}
                 <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between pointer-events-none">
