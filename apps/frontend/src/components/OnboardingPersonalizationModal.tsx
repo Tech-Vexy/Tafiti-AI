@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-    Sparkles, Check, Plus, X, ArrowRight, Loader2,
+    Check, Plus, X, ArrowRight, Loader2,
     Cpu, Activity, Sprout, TrendingUp, Atom, Users, Scale, Globe
 } from 'lucide-react';
 import { RESEARCH_FIELDS, getFieldById } from './ResearchChatbot/researchFields';
@@ -174,12 +174,11 @@ export default function OnboardingPersonalizationModal({
     return (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in">
             <div className="relative w-full max-w-2xl bg-[var(--bg-elevated)] border border-[var(--border-glass)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-[var(--text-main)] animate-scale-up">
-                {/* Header with gradient glow */}
-                <div className="relative p-6 pb-4 border-b border-[var(--border-glass)] bg-gradient-to-r from-sky-500/10 via-emerald-500/5 to-transparent">
+                {/* Header without sparkles or blue glow */}
+                <div className="relative p-6 pb-4 border-b border-[var(--border-glass)] bg-[var(--bg-elevated)]">
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-1">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/25 mb-1">
-                                <Sparkles className="w-3 h-3" />
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--btn-surface)] text-[var(--text-dim)] border border-[var(--border-glass)] mb-1">
                                 <span>Research Onboarding</span>
                             </div>
                             <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-main)]">
@@ -208,7 +207,7 @@ export default function OnboardingPersonalizationModal({
                             <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
                                 1. Primary Research Discipline
                             </label>
-                            <span className="text-xs text-sky-400 font-medium">
+                            <span className="text-xs text-[var(--text-main)] font-semibold">
                                 {currentFieldObj.label}
                             </span>
                         </div>
@@ -223,15 +222,15 @@ export default function OnboardingPersonalizationModal({
                                         onClick={() => handleFieldSelect(field.id)}
                                         className={`group relative flex items-start gap-3 p-3 rounded-xl text-left transition-all border ${
                                             isSelected
-                                                ? 'bg-sky-500/10 border-sky-500 text-[var(--text-main)] shadow-md ring-1 ring-sky-500/50'
+                                                ? 'bg-[var(--sidebar-hover)] border-[var(--text-main)] text-[var(--text-main)] shadow-sm ring-1 ring-[var(--text-main)]/20'
                                                 : 'bg-[var(--btn-surface)] hover:bg-[var(--sidebar-hover)] border-[var(--border-glass)] text-[var(--text-dim)] hover:text-[var(--text-main)]'
                                         }`}
                                     >
                                         <div
                                             className={`p-2 rounded-lg shrink-0 mt-0.5 transition-colors ${
                                                 isSelected
-                                                    ? 'bg-sky-500 text-white shadow-sm'
-                                                    : 'bg-[var(--bg-elevated)] border border-[var(--border-glass)] text-[var(--text-main)] group-hover:border-sky-500/40'
+                                                    ? 'bg-[var(--text-main)] text-[var(--bg-main)] shadow-sm'
+                                                    : 'bg-[var(--bg-elevated)] border border-[var(--border-glass)] text-[var(--text-main)] group-hover:border-[var(--border-focus)]'
                                             }`}
                                         >
                                             {renderDisciplineIcon(field.icon, 'w-4 h-4')}
@@ -245,7 +244,7 @@ export default function OnboardingPersonalizationModal({
                                             </p>
                                         </div>
                                         {isSelected && (
-                                            <div className="absolute top-3 right-3 w-4 h-4 rounded-full bg-sky-500 text-white flex items-center justify-center">
+                                            <div className="absolute top-3 right-3 w-4 h-4 rounded-full bg-[var(--text-main)] text-[var(--bg-main)] flex items-center justify-center">
                                                 <Check className="w-2.5 h-2.5 stroke-[3]" />
                                             </div>
                                         )}
@@ -294,7 +293,7 @@ export default function OnboardingPersonalizationModal({
                                 value={customTopicInput}
                                 onChange={(e) => setCustomTopicInput(e.target.value)}
                                 placeholder="Add custom topic or keyword (e.g. Multimodal LLMs)..."
-                                className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-[var(--btn-surface)] border border-[var(--border-glass)] text-[var(--text-main)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-sky-500 transition-colors"
+                                className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-[var(--btn-surface)] border border-[var(--border-glass)] text-[var(--text-main)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--border-focus)] transition-colors"
                             />
                             <button
                                 type="submit"
