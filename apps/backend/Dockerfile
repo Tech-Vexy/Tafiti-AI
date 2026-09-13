@@ -30,9 +30,12 @@ RUN addgroup --system app && adduser --system --ingroup app app
 RUN chown -R app:app /app
 USER app
 
-EXPOSE 8000
+# Cloud Run dynamically assigns PORT (defaults to 8080)
+ENV PORT=8080
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -f http://localhost:8000/health/live || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/health/live || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+
