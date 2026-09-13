@@ -54,15 +54,8 @@ class SpringerService(BaseExternalClient):
             cache_ttl=3600,
             api_key=primary_key,
             rate_limit_per_minute=settings.SPRINGER_RATE_LIMIT_PER_MINUTE,
+            client=client,  # inject the shared app-level httpx client when available
         )
-        self._shared_client = client
-
-    @property
-    def client(self) -> httpx.AsyncClient:
-        """Use shared client if provided, otherwise use base client."""
-        if self._shared_client:
-            return self._shared_client
-        return super().client
 
     @property
     def is_configured(self) -> bool:

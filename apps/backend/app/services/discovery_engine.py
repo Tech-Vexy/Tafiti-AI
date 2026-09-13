@@ -12,15 +12,12 @@ Responsibilities:
 """
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logger import get_logger
-from app.core.cache import cache
-from app.models.database import Source, Passage, ResearchTask
+from app.models.database import Source, Passage
 
 logger = get_logger("discovery_engine")
 
@@ -31,11 +28,11 @@ class DiscoveryEngine:
     and persists them as Source + Passage records in the evidence layer.
     """
 
-    # API search methods mapped by service name
+    # API search methods mapped by service name (strictly configured in .env)
     _search_backends = {
         "openalex": "search_openalex",
-        "semantic_scholar": "search_semantic_scholar",
         "core": "search_core",
+        "elsevier": "search_elsevier",
         "springer": "search_springer",
         "parallel": "search_parallel",
     }
@@ -132,30 +129,32 @@ class DiscoveryEngine:
             logger.warning(f"openalex_search_failed: {e}")
             return []
 
-    async def search_semantic_scholar(self, query: str, limit: int) -> list[dict]:
-        """Search Semantic Scholar for papers."""
+    async def search_elsevier(self, query: str, limit: int) -> list[dict]:
+        """Search Elsevier / Scopus for papers."""
         try:
-            from app.services.semantic_scholar_service import SemanticScholarService
-            service = SemanticScholarService()
+            from app.services.elsevier_service import get_elsevier_service
+            service = get_elsevier_service()
+            if not service.is_configured:
+                return []
             results = await service.search_papers(query, limit=limit)
             return [
                 {
-                    "external_id": r.get("paperId", ""),
+                    "external_id": r.id,
                     "source_type": "paper",
-                    "title": r.get("title", ""),
-                    "authors": [a.get("name", "") for a in r.get("authors", [])],
-                    "year": r.get("year"),
-                    "journal": r.get("venue"),
-                    "doi": r.get("externalIds", {}).get("DOI"),
-                    "url": r.get("url"),
-                    "abstract": r.get("abstract", ""),
-                    "citation_count": r.get("citationCount", 0),
-                    "relevance_score": 70,
+                    "title": r.title,
+                    "authors": r.authors,
+                    "year": r.year,
+                    "journal": getattr(r, "publisher", None),
+                    "doi": getattr(r, "doi", None),
+                    "url": getattr(r, "url", None),
+                    "abstract": r.abstract or "",
+                    "citation_count": r.citations or 0,
+                    "relevance_score": 85,
                 }
                 for r in results
             ]
         except Exception as e:
-            logger.warning(f"semantic_scholar_search_failed: {e}")
+            logger.warning(f"elsevier_search_failed: {e}")
             return []
 
     async def search_core(self, query: str, limit: int) -> list[dict]:
@@ -163,6 +162,8 @@ class DiscoveryEngine:
         try:
             from app.services.core_service import get_core_service
             service = get_core_service()
+            if not service.is_configured:
+                return []
             results = await service.search_papers(query, limit=limit)
             return [
                 {

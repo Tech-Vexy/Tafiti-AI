@@ -1,21 +1,11 @@
-// @ts-nocheck
-'use client';
+import type { Metadata } from 'next';
+import BillingPanel from './BillingPanel';
 
-import dynamic from 'next/dynamic';
-import { useUser } from '@clerk/nextjs';
-import useUserStore from '@/store/useUserStore';
+export const metadata: Metadata = {
+  title: 'Billing & Plan',
+  description: 'Manage your Tafiti AI subscription and invoices.',
+};
 
-const BillingView = dynamic(() => import('@/components/BillingView'), {
-    ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center py-32">
-            <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin" />
-        </div>
-    ),
-});
-
-export default function BillingViewPage() {
-    const { user } = useUser();
-    const { userProfile } = useUserStore();
-    return <BillingView user={user || userProfile} />;
+export default function Page() {
+  return <BillingPanel />;
 }

@@ -13,8 +13,6 @@ Durability guarantees:
 """
 
 import json
-from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +119,6 @@ class ResearchRunner:
                         summary=f"Auto-checkpoint after {session['tasks_completed']} tasks"
                     )
                     # Store checkpoint reference in session
-                    session_state = await durability.get_session_state(question_id, db)
                     from app.models.database import ResearchSessionState
                     ss = await db.scalar(
                         select(ResearchSessionState).where(
@@ -299,8 +296,8 @@ class ResearchRunner:
                 reason="User paused research",
                 actor="user",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"State transition to 'paused' failed for question {question_id}: {e}")
 
         return {"status": "paused", "checkpoint": cp}
 
@@ -317,8 +314,8 @@ class ResearchRunner:
                 reason="User resumed research",
                 actor="user",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"State transition to 'active' failed for question {question_id}: {e}")
 
         return await self.start_research(question_id, db)
 

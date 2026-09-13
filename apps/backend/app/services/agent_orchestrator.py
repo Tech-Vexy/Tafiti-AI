@@ -9,13 +9,10 @@ Inspired by Google AntiGravity Teamwork patterns:
 - Agent lifecycle management
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from app.core.timeutil import utcnow
 
 from sqlalchemy import select, func, desc
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.database import (
     AgentTeam, Agent, AgentMessage, ResearchQuestion, ResearchTask,
@@ -25,7 +22,7 @@ logger = get_logger("agent_orchestrator")
 
 AGENT_ROLES = {
     "lead": {"description": "Team coordinator.", "capabilities": ["coordinate", "delegate", "review", "spawn"]},
-    "researcher": {"description": "Searches academic databases and web evidence.", "capabilities": ["search_openalex", "search_semantic_scholar", "search_core", "search_parallel"]},
+    "researcher": {"description": "Searches academic databases and web evidence.", "capabilities": ["search_openalex", "search_core", "search_elsevier", "search_springer", "search_parallel"]},
     "critic": {"description": "Reviews quality and validity.", "capabilities": ["review_claims", "check_citations", "identify_gaps"]},
     "synthesist": {"description": "Synthesizes findings.", "capabilities": ["synthesize", "identify_patterns", "generate_report"]},
     "extractor": {"description": "Extracts claims and evidence.", "capabilities": ["extract_claims", "extract_evidence"]},
@@ -105,7 +102,7 @@ class AgentOrchestrator:
         if not agent:
             raise ValueError("Agent not found")
         agent.status = "retired"
-        agent.retired_at = datetime.now(timezone.utc)
+        agent.retired_at = utcnow()
         if summary:
             agent.output_summary = summary
         await db.commit()
@@ -120,7 +117,7 @@ class AgentOrchestrator:
             raise ValueError("Task not found")
         agent.current_task_id = task_id
         agent.status = "working"
-        agent.started_at = datetime.now(timezone.utc)
+        agent.started_at = utcnow()
         task.status = "running"
         await db.commit()
         await self.send_message(team_id=agent.team_id, sender_agent_id=agent_id, message_type="task_assigned", content=agent.name + " assigned to: " + task.description, metadata={"task_id": task_id}, db=db)
@@ -134,7 +131,7 @@ class AgentOrchestrator:
             task = await db.get(ResearchTask, agent.current_task_id)
             if task:
                 task.status = "completed"
-                task.completed_at = datetime.now(timezone.utc)
+                task.completed_at = utcnow()
                 if result_summary:
                     task.result_summary = result_summary[:1000]
         agent.status = "active"
@@ -161,7 +158,7 @@ class AgentOrchestrator:
             if task:
                 task.status = "failed"
                 task.error = error[:500]
-                task.completed_at = datetime.now(timezone.utc)
+                task.completed_at = utcnow()
         agent.status = "active"
         agent.current_task_id = None
         agent.tasks_failed += 1

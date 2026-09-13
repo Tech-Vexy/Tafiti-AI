@@ -2,10 +2,10 @@
 Unified Model Router
 ====================
 Abstracts LLM provider differences into a single interface.
-Supports: Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Nvidia Build
-Features: Fallback chain, multimodal, cost tracking, health checks.
+Supports: OpenAI, Google Gemini, OpenRouter, Nvidia Build
+Features: Fallback chain, multimodal, health checks.
 
-Instead of hardcoding Groq everywhere, services call:
+Instead of hardcoding models everywhere, services call:
     result = await model_router.complete(messages=[...], task="synthesis")
 
 The router picks the best available provider, handles retries,
@@ -13,11 +13,9 @@ and falls back to alternatives if one fails.
 """
 
 import time
-import json
-import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional, Literal
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -27,12 +25,12 @@ logger = get_logger("model_router")
 
 class TaskType(str, Enum):
     """Research task types with recommended provider preferences."""
-    SYNTHESIS = "synthesis"        # Long-form generation → Gemini or GPT-4
-    EXTRACTION = "extraction"     # Structured output → Groq (fast) or GPT-4
-    CRITIQUE = "critique"         # Analysis → Groq or Claude
+    SYNTHESIS = "synthesis"        # Long-form generation → Gemini or Nvidia
+    EXTRACTION = "extraction"     # Structured output → Nvidia (fast) or GPT-4
+    CRITIQUE = "critique"         # Analysis → OpenRouter or Nvidia
     SEARCH_PLANNING = "search_planning"  # Planning → fast model
-    CLAIM_EXTRACTION = "claim_extraction"  # Structured → Groq
-    DEPTH_CALIBRATION = "depth_calibration"  # Quick decision → Groq
+    CLAIM_EXTRACTION = "claim_extraction"  # Structured → Nvidia
+    DEPTH_CALIBRATION = "depth_calibration"  # Quick decision → Nvidia
     MULTIMODAL = "multimodal"     # Image/PDF analysis → Gemini or GPT-4V
     CHAT = "chat"                 # Conversation → any provider
 
@@ -43,61 +41,18 @@ TASK_PROVIDER_PREFERENCES = {
     TaskType.MULTIMODAL: ["gemini", "nvidia", "openrouter"],
     TaskType.CRITIQUE: ["openrouter", "nvidia", "gemini"],
     TaskType.EXTRACTION: ["nvidia", "gemini", "openrouter"],
-    TaskType.SEARCH_PLANNING: ["nvidia", "gemini", "openrouter"],
-    TaskType.CLAIM_EXTRACTION: ["nvidia", "gemini", "openrouter"],
-    TaskType.DEPTH_CALIBRATION: ["nvidia", "gemini", "openrouter"],
-    TaskType.CHAT: ["nvidia", "gemini", "openrouter"],
+    TaskType.SEARCH_PLANNING: ["nvidia", "openrouter", "gemini"],
+    TaskType.CLAIM_EXTRACTION: ["nvidia", "openrouter", "gemini"],
+    TaskType.DEPTH_CALIBRATION: ["nvidia", "openrouter", "gemini"],
+    TaskType.CHAT: ["nvidia", "openrouter", "gemini"],
 }
 
 # Default models per provider
 DEFAULT_MODELS = {
-    "gemini": "gemini-3.5-pro",
+    "gemini": "deep-research-preview-04-2026",
     "nvidia": "deepseek-ai/deepseek-v4-flash-0731",
     "openrouter": "openrouter/free",
-    "groq": "llama3-70b-8192",
-    "openai": "gpt-4o",
-    "anthropic": "claude-3-5-sonnet-20241022",
-}
-
-# Approximate cost per 1M tokens (USD) — for tracking
-COST_PER_1M_TOKENS = {
-    "gemini:gemini-3.1": 0.10,
-    "gemini:gemini-3.5": 0.50,
-    "gemini:gemini-3.5-flash": 0.10,
-    "gemini:gemini-3.5-pro": 1.25,
-    "gemini:gemini-3.6": 1.50,
-    "gemini:gemini-3.8": 2.00,
-    "nvidia:deepseek-ai/deepseek-v4-flash-0731": 0.15,
-    "nvidia:deepseek-ai/deepseek-v4-pro-0813": 0.60,
-    "nvidia:moonshotai/kimi-k3": 0.30,
-    "nvidia:poolside/laguna-xs-2.1": 0.10,
-    "openrouter:openrouter/free": 0.0,
-    "openrouter:google/gemma-4-31b-it:free": 0.0,
-    "openrouter:google/gemma-4-26b-a4b-it:free": 0.0,
-    "openrouter:nvidia/nemotron-3-ultra-550b-a55b:free": 0.0,
-    "openrouter:nvidia/nemotron-3.5-lightning:free": 0.0,
-    "openrouter:minimax/minimax-m3:free": 0.0,
-    "openrouter:meta-llama/llama-3.3-70b-instruct:free": 0.0,
-    "openrouter:meta-llama/llama-3.1-8b-instruct:free": 0.0,
-    "openrouter:qwen/qwen-2.5-72b-instruct": 0.50,
-    "nvidia:nvidia/llama-3.1-nemotron-70b-instruct": 0.80,
-    "nvidia:nvidia/llama-3.1-8b-instruct": 0.10,
-    "nvidia:meta/llama-3.1-405b-instruct": 2.70,
-    "groq:llama3-70b-8192": 0.59,
-    "groq:llama-3.3-70b-versatile": 0.59,
-    "openai:gpt-4o": 2.50,
-    "openai:gpt-4o-mini": 0.15,
-    "anthropic:claude-3-5-sonnet-20241022": 3.00,
-    "anthropic:claude-3-haiku-20240307": 0.25,
-}
-
-# Cost per 1M image tokens (Gemini charges differently for images)
-IMAGE_COST_PER_1M_TOKENS = {
-    "gemini:gemini-3.5-flash": 0.10,
-    "gemini:gemini-3.5-pro": 1.25,
-    "gemini:gemini-3.6": 1.50,
-    "gemini:gemini-3.8": 2.00,
-    "openai:gpt-4o": 10.00,
+    "openai": "gpt-4o-mini",
 }
 
 
@@ -111,10 +66,9 @@ class ProviderHealth:
     total_calls: int = 0
     total_errors: int = 0
     avg_latency_ms: float = 0
-    total_cost_usd: float = 0
     _latencies: list = field(default_factory=list)
 
-    def record_success(self, latency_ms: float, cost: float = 0):
+    def record_success(self, latency_ms: float):
         self.total_calls += 1
         self.consecutive_failures = 0
         self.available = True
@@ -122,7 +76,6 @@ class ProviderHealth:
         if len(self._latencies) > 100:
             self._latencies = self._latencies[-50:]
         self.avg_latency_ms = sum(self._latencies) / len(self._latencies)
-        self.total_cost_usd += cost
         self.last_check = time.time()
 
     def record_failure(self):
@@ -149,20 +102,16 @@ class ModelRouter:
 
     def __init__(self):
         self.providers = {
-            "groq": ProviderHealth(name="groq"),
-            "openai": ProviderHealth(name="openai"),
             "gemini": ProviderHealth(name="gemini"),
-            "anthropic": ProviderHealth(name="anthropic"),
             "openrouter": ProviderHealth(name="openrouter"),
             "nvidia": ProviderHealth(name="nvidia"),
+            "openai": ProviderHealth(name="openai"),
         }
         self._api_key_map = {
-            "groq": lambda: settings.GROQ_API_KEY,
-            "openai": lambda: settings.OPENAI_API_KEY,
             "gemini": lambda: settings.gemini_api_key,
-            "anthropic": lambda: settings.ANTHROPIC_API_KEY,
             "openrouter": lambda: settings.OPENROUTER_API_KEY,
             "nvidia": lambda: settings.nvidia_api_key,
+            "openai": lambda: settings.OPENAI_API_KEY,
         }
 
     def _has_provider(self, provider: str) -> bool:
@@ -172,7 +121,7 @@ class ModelRouter:
 
     def _get_available_provider(self, task_type: TaskType) -> str:
         """Select the best available provider for a task type."""
-        prefs = TASK_PROVIDER_PREFERENCES.get(task_type, ["groq", "openai", "gemini"])
+        prefs = TASK_PROVIDER_PREFERENCES.get(task_type, ["gemini", "nvidia", "openrouter"])
 
         # Try user's preferred provider first
         preferred = settings.DEFAULT_LLM_PROVIDER
@@ -200,27 +149,12 @@ class ModelRouter:
 
         # Check settings for provider-specific model
         provider_model_map = {
-            "groq": settings.DEFAULT_LLM_MODEL,
-            "openai": "gpt-4o",
+           
             "gemini": settings.GEMINI_DEFAULT_MODEL,
-            "anthropic": "claude-3-5-sonnet-20241022",
             "openrouter": settings.OPENROUTER_DEFAULT_MODEL,
             "nvidia": settings.NVIDIA_DEFAULT_MODEL,
         }
-        return provider_model_map.get(provider, DEFAULT_MODELS.get(provider, "gpt-4o"))
-
-    def _calculate_cost(self, provider: str, model: str, input_tokens: int, output_tokens: int, image_tokens: int = 0) -> float:
-        """Calculate approximate cost for a request."""
-        key = f"{provider}:{model}"
-        text_cost_per_1m = COST_PER_1M_TOKENS.get(key, 1.0)
-        text_cost = ((input_tokens + output_tokens) / 1_000_000) * text_cost_per_1m
-
-        image_cost = 0
-        if image_tokens > 0:
-            img_cost_per_1m = IMAGE_COST_PER_1M_TOKENS.get(key, 5.0)
-            image_cost = (image_tokens / 1_000_000) * img_cost_per_1m
-
-        return text_cost + image_cost
+        return provider_model_map.get(provider, DEFAULT_MODELS.get(provider, "gemini-3.8-flash"))
 
     async def complete(
         self,
@@ -241,7 +175,6 @@ class ModelRouter:
                 "model": str,
                 "input_tokens": int,
                 "output_tokens": int,
-                "cost_usd": float,
                 "latency_ms": float,
             }
         """
@@ -255,18 +188,12 @@ class ModelRouter:
             )
             latency_ms = (time.time() - start) * 1000
 
-            # Track cost
-            cost = self._calculate_cost(
-                provider, model_id,
-                result.get("input_tokens", 0), result.get("output_tokens", 0),
-                result.get("image_tokens", 0),
-            )
-            self.providers[provider].record_success(latency_ms, cost)
+            self.providers[provider].record_success(latency_ms)
 
             logger.info(
                 f"llm_complete provider={provider} model={model_id} "
                 f"task={task_type.value} latency_ms={latency_ms:.0f} "
-                f"cost=${cost:.4f} tokens={result.get('input_tokens', 0) + result.get('output_tokens', 0)}"
+                f"tokens={result.get('input_tokens', 0) + result.get('output_tokens', 0)}"
             )
 
             return {
@@ -276,7 +203,6 @@ class ModelRouter:
                 "input_tokens": result.get("input_tokens", 0),
                 "output_tokens": result.get("output_tokens", 0),
                 "image_tokens": result.get("image_tokens", 0),
-                "cost_usd": cost,
                 "latency_ms": latency_ms,
             }
 
@@ -297,7 +223,7 @@ class ModelRouter:
 
     def _get_fallback_provider(self, failed_provider: str, task_type: TaskType) -> Optional[str]:
         """Get next available provider after a failure."""
-        prefs = TASK_PROVIDER_PREFERENCES.get(task_type, ["groq", "openai", "gemini"])
+        prefs = TASK_PROVIDER_PREFERENCES.get(task_type, ["gemini", "nvidia", "openrouter"])
         for provider in prefs:
             if provider != failed_provider and self._has_provider(provider):
                 health = self.providers.get(provider)
@@ -310,66 +236,83 @@ class ModelRouter:
         temperature: float, max_tokens: int, response_format: Optional[dict]
     ) -> dict:
         """Route to provider-specific implementation."""
-        if provider == "groq":
-            return await self._call_groq(model, messages, temperature, max_tokens, response_format)
-        elif provider == "openai":
-            return await self._call_openai(model, messages, temperature, max_tokens, response_format)
-        elif provider == "gemini":
+        
+        if provider == "gemini":
             return await self._call_gemini(model, messages, temperature, max_tokens)
-        elif provider == "anthropic":
-            return await self._call_anthropic(model, messages, temperature, max_tokens)
         elif provider == "openrouter":
             return await self._call_openrouter(model, messages, temperature, max_tokens, response_format)
         elif provider == "nvidia":
             return await self._call_nvidia(model, messages, temperature, max_tokens, response_format)
+        elif provider == "openai":
+            return await self._call_openai(model, messages, temperature, max_tokens, response_format)
         else:
             raise ValueError(f"Unknown provider: {provider}")
-
-    # ── Groq (via OpenAI-compatible SDK) ──────────────────────────────────
-
-    async def _call_groq(
-        self, model: str, messages: list, temperature: float,
-        max_tokens: int, response_format: Optional[dict]
-    ) -> dict:
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(
-            api_key=settings.GROQ_API_KEY,
-            base_url="https://api.groq.com/openai/v1",
-        )
-        kwargs = dict(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
-        if response_format:
-            kwargs["response_format"] = response_format
-
-        resp = await client.chat.completions.create(**kwargs)
-        usage = resp.usage or type("u", (), {"prompt_tokens": 0, "completion_tokens": 0})()
-
-        return {
-            "content": resp.choices[0].message.content or "",
-            "input_tokens": usage.prompt_tokens,
-            "output_tokens": usage.completion_tokens,
-        }
 
     # ── OpenAI ────────────────────────────────────────────────────────────
 
     async def _call_openai(
         self, model: str, messages: list, temperature: float,
-        max_tokens: int, response_format: Optional[dict]
+        max_tokens: int, response_format: Optional[dict] = None
     ) -> dict:
         from openai import AsyncOpenAI
+        from openai.types.chat import ChatCompletion
 
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        kwargs = dict(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
         if response_format:
             kwargs["response_format"] = response_format
 
         resp = await client.chat.completions.create(**kwargs)
-        usage = resp.usage or type("u", (), {"prompt_tokens": 0, "completion_tokens": 0})()
+        if not isinstance(resp, ChatCompletion):
+            raise RuntimeError(f"Expected ChatCompletion from OpenAI, got {type(resp).__name__}")
+
+        input_tokens = resp.usage.prompt_tokens if resp.usage else 0
+        output_tokens = resp.usage.completion_tokens if resp.usage else 0
 
         return {
             "content": resp.choices[0].message.content or "",
-            "input_tokens": usage.prompt_tokens,
-            "output_tokens": usage.completion_tokens,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    # ── OpenRouter ────────────────────────────────────────────────────────
+
+    async def _call_openrouter(
+        self, model: str, messages: list, temperature: float,
+        max_tokens: int, response_format: Optional[dict] = None
+    ) -> dict:
+        from openai import AsyncOpenAI
+        from openai.types.chat import ChatCompletion
+
+        client = AsyncOpenAI(
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1",
+        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if response_format:
+            kwargs["response_format"] = response_format
+
+        resp = await client.chat.completions.create(**kwargs)
+        if not isinstance(resp, ChatCompletion):
+            raise RuntimeError(f"Expected ChatCompletion from OpenRouter, got {type(resp).__name__}")
+
+        input_tokens = resp.usage.prompt_tokens if resp.usage else 0
+        output_tokens = resp.usage.completion_tokens if resp.usage else 0
+
+        return {
+            "content": resp.choices[0].message.content or "",
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
         }
 
     # ── Google Gemini ─────────────────────────────────────────────────────
@@ -377,34 +320,64 @@ class ModelRouter:
     async def _call_gemini(
         self, model: str, messages: list, temperature: float, max_tokens: int
     ) -> dict:
-        from google import genai
+        """Call Gemini via the Interactions API using Agno's GeminiInteractions model."""
+        from agno.agent import Agent
+        from agno.models.google import GeminiInteractions
 
-        client = genai.Client(api_key=settings.gemini_api_key)
+        # Extract primary prompt from messages
+        system_instructions = []
+        user_query = ""
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                content = " ".join(
+                    p.get("text", "") if isinstance(p, dict) else str(p)
+                    for p in content
+                )
+            if role == "system":
+                system_instructions.append(content)
+            elif role == "user":
+                user_query = content
 
-        # Convert OpenAI-style messages to Gemini format
-        contents = self._convert_to_gemini_messages(messages)
+        combined_prompt = ""
+        if system_instructions:
+            combined_prompt += "\n\n".join(system_instructions) + "\n\n"
+        combined_prompt += user_query if user_query else (messages[-1].get("content", "") if messages else "")
 
-        response = await client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=genai.types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens,
-            ),
+        # Determine agent ID based on model parameter (strictly deep-research models for Interactions API)
+        agent_id = settings.GEMINI_DEEP_RESEARCH_AGENT
+        if model and "max" in model.lower():
+            agent_id = settings.GEMINI_DEEP_RESEARCH_MAX_AGENT
+        elif model and "deep-research" in model.lower():
+            agent_id = model
+        else:
+            agent_id = settings.GEMINI_DEEP_RESEARCH_AGENT
+
+        thinking_summaries: Optional[Literal["auto", "none"]] = (
+            "auto" if settings.GEMINI_DEEP_RESEARCH_THINKING_SUMMARIES == "auto" else "none"
+        )
+        visualization: Optional[Literal["auto", "off"]] = (
+            "auto" if settings.GEMINI_DEEP_RESEARCH_VISUALIZATION == "auto" else "off"
         )
 
-        text = response.text or ""
-        # Gemini reports usage differently
-        input_tokens = 0
-        output_tokens = 0
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
-            output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+        interactions_model = GeminiInteractions(
+            agent=agent_id,
+            thinking_summaries=thinking_summaries,
+            visualization=visualization,
+            search=settings.GEMINI_DEEP_RESEARCH_SEARCH,
+            url_context=settings.GEMINI_DEEP_RESEARCH_URL_CONTEXT,
+        )
 
+        agent = Agent(model=interactions_model, markdown=True)
+        response = await agent.arun(combined_prompt)
+
+        raw_content = getattr(response, "content", None)
+        text: str = str(raw_content) if raw_content is not None else str(response or "")
         return {
             "content": text,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
+            "input_tokens": len(combined_prompt.split()),
+            "output_tokens": len(text.split()),
         }
 
     def _convert_to_gemini_messages(self, messages: list) -> list:
@@ -423,7 +396,6 @@ class ModelRouter:
                             # Convert base64 image to Gemini inline_data
                             url = part.get("image_url", {}).get("url", "")
                             if url.startswith("data:"):
-                                import base64
                                 header, b64data = url.split(",", 1)
                                 mime = header.split(":")[1].split(";")[0]
                                 parts.append({"inline_data": {"mime_type": mime, "data": b64data}})
@@ -433,7 +405,6 @@ class ModelRouter:
                             parts.append(part.get("text", ""))
                         elif part.get("type") == "file":
                             # PDF or other file — pass as inline data
-                            import base64
                             b64data = part.get("data", "")
                             mime = part.get("mime_type", "application/pdf")
                             parts.append({"inline_data": {"mime_type": mime, "data": b64data}})
@@ -444,75 +415,6 @@ class ModelRouter:
                 contents.append({"role": role, "parts": [str(content)]})
         return contents
 
-    # ── Anthropic Claude ──────────────────────────────────────────────────
-
-    async def _call_anthropic(
-        self, model: str, messages: list, temperature: float, max_tokens: int
-    ) -> dict:
-        import httpx
-
-        # Anthropic uses a different message format
-        system_text = ""
-        chat_messages = []
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_text += msg.get("content", "") + "\n"
-            else:
-                content = msg.get("content", "")
-                if isinstance(content, list):
-                    # Convert multimodal content for Anthropic
-                    parts = []
-                    for part in content:
-                        if isinstance(part, dict):
-                            if part.get("type") == "text":
-                                parts.append({"type": "text", "text": part.get("text", "")})
-                            elif part.get("type") == "image_url":
-                                url = part.get("image_url", {}).get("url", "")
-                                if url.startswith("data:"):
-                                    import base64
-                                    header, b64data = url.split(",", 1)
-                                    media_type = header.split(":")[1].split(";")[0]
-                                    parts.append({
-                                        "type": "image",
-                                        "source": {"type": "base64", "media_type": media_type, "data": b64data},
-                                    })
-                        else:
-                            parts.append({"type": "text", "text": str(part)})
-                    chat_messages.append({"role": msg["role"], "content": parts})
-                else:
-                    chat_messages.append({"role": msg["role"], "content": str(content)})
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                    "system": system_text.strip() if system_text else None,
-                    "messages": chat_messages,
-                },
-                timeout=120.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        content = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                content += block.get("text", "")
-
-        usage = data.get("usage", {})
-        return {
-            "content": content,
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),
-        }
 
     # ── Nvidia NIM (via OpenAI-compatible integrate.api.nvidia.com) ─────────
 
@@ -521,6 +423,7 @@ class ModelRouter:
         max_tokens: int, response_format: Optional[dict] = None
     ) -> dict:
         from openai import AsyncOpenAI
+        from openai.types.chat import ChatCompletion
 
         api_key = settings.nvidia_api_key
         client = AsyncOpenAI(
@@ -528,12 +431,12 @@ class ModelRouter:
             base_url=settings.NVIDIA_BASE_URL,
         )
 
-        kwargs = dict(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens or 16384,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or 16384,
+        }
 
         # DeepSeek and reasoning models support chat_template_kwargs
         if "deepseek" in model.lower():
@@ -550,6 +453,9 @@ class ModelRouter:
             kwargs["response_format"] = response_format
 
         resp = await client.chat.completions.create(**kwargs)
+        if not isinstance(resp, ChatCompletion):
+            raise RuntimeError(f"Expected ChatCompletion from NVIDIA NIM, got {type(resp).__name__}")
+
         choice = resp.choices[0]
         content = choice.message.content or ""
         reasoning = (
@@ -557,13 +463,14 @@ class ModelRouter:
             getattr(choice.message, "reasoning_content", None)
         )
 
-        usage = resp.usage or type("u", (), {"prompt_tokens": 0, "completion_tokens": 0})()
+        input_tokens = resp.usage.prompt_tokens if resp.usage else 0
+        output_tokens = resp.usage.completion_tokens if resp.usage else 0
 
         return {
             "content": content,
             "reasoning": reasoning,
-            "input_tokens": usage.prompt_tokens,
-            "output_tokens": usage.completion_tokens,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
         }
 
     # ── Multimodal Helpers ────────────────────────────────────────────────
@@ -615,25 +522,11 @@ class ModelRouter:
                 "total_calls": health.total_calls,
                 "total_errors": health.total_errors,
                 "avg_latency_ms": round(health.avg_latency_ms, 1),
-                "total_cost_usd": round(health.total_cost_usd, 4),
                 "consecutive_failures": health.consecutive_failures,
             }
         return status
 
-    def get_cost_summary(self) -> dict:
-        """Get cost summary across all providers."""
-        total_cost = sum(h.total_cost_usd for h in self.providers.values())
-        total_calls = sum(h.total_calls for h in self.providers.values())
-        return {
-            "total_cost_usd": round(total_cost, 4),
-            "total_calls": total_calls,
-            "avg_cost_per_call": round(total_cost / max(total_calls, 1), 6),
-            "by_provider": {
-                name: {"cost_usd": round(h.total_cost_usd, 4), "calls": h.total_calls}
-                for name, h in self.providers.items()
-            },
-        }
-
 
 # ── Singleton ──────────────────────────────────────────────────────────
 model_router = ModelRouter()
+

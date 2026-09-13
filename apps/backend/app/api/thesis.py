@@ -1,12 +1,11 @@
 """
 Thesis Editor API — CRUD + version history + auto-save for Syncfusion Document Editor.
 """
-import json
+from app.core.timeutil import utcnow
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List, Optional
-from datetime import datetime, timezone
 
 from app.db.session import get_db
 from app.models.database import Thesis
@@ -123,12 +122,12 @@ async def update_thesis(
                 version_history = version_history[-MAX_VERSION_HISTORY:]
             thesis.version_history = version_history
 
-        thesis.last_auto_save_at = datetime.now(timezone.utc)
+        thesis.last_auto_save_at = utcnow()
 
     for field, value in update_data.items():
         setattr(thesis, field, value)
 
-    thesis.updated_at = datetime.now(timezone.utc)
+    thesis.updated_at = utcnow()
     await db.commit()
     await db.refresh(thesis)
     return thesis
@@ -155,13 +154,13 @@ async def create_snapshot(
         "plain_text": thesis.plain_text,
         "word_count": thesis.word_count,
         "page_count": thesis.page_count,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": utcnow().isoformat(),
     }
     version_history.append(version_entry)
     if len(version_history) > MAX_VERSION_HISTORY:
         version_history = version_history[-MAX_VERSION_HISTORY:]
     thesis.version_history = version_history
-    thesis.updated_at = datetime.now(timezone.utc)
+    thesis.updated_at = utcnow()
     await db.commit()
     await db.refresh(thesis)
     return thesis
@@ -223,7 +222,7 @@ async def restore_version(
         "plain_text": thesis.plain_text,
         "word_count": thesis.word_count,
         "page_count": thesis.page_count,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": utcnow().isoformat(),
         "_note": f"auto-saved before restoring to v{version_number}",
     }
     version_history.append(pre_restore)
@@ -233,7 +232,7 @@ async def restore_version(
     thesis.word_count = target.get("word_count", thesis.word_count)
     thesis.page_count = target.get("page_count", thesis.page_count)
     thesis.version_history = version_history
-    thesis.updated_at = datetime.now(timezone.utc)
+    thesis.updated_at = utcnow()
 
     await db.commit()
     await db.refresh(thesis)
@@ -280,5 +279,5 @@ async def export_thesis(
         "format": format,
         "content": thesis.content,
         "plain_text": thesis.plain_text or "",
-        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_at": utcnow().isoformat(),
     }

@@ -87,7 +87,7 @@ async def get_unread_count(
 ):
     stmt = select(func.count(Notification.id)).where(
         (Notification.user_id == current_user["user_id"]) &
-        (Notification.is_read == False)
+        (Notification.is_read.is_(False))
     )
     count = await db.scalar(stmt)
     return {"count": count or 0}
@@ -101,7 +101,7 @@ async def mark_all_notifications_read(
     """Mark all notifications as read."""
     stmt = update(Notification).where(
         (Notification.user_id == current_user["user_id"]) &
-        (Notification.is_read == False)
+        (Notification.is_read.is_(False))
     ).values(is_read=True)
     await db.execute(stmt)
     await db.commit()

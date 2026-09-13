@@ -9,12 +9,11 @@ Provides:
 """
 
 from typing import List, Dict, Any, Optional, Union
-import asyncio
 import hashlib
 from urllib.parse import urlparse
 
 from parallel import Parallel, AsyncParallel
-from parallel.types import SearchResult, WebSearchResult
+from parallel.types import SearchResult
 from parallel.types.task_run_result import TaskRunResult
 
 from agno.tools.toolkit import Toolkit

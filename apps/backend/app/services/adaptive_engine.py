@@ -18,17 +18,14 @@ responsive to what is actually discovered.
 """
 
 import json
-from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.database import (
-    AgentTeam, Agent, AgentMessage, ResearchQuestion, ResearchTask,
-    Source, Passage, Claim, Evidence,
+    AgentTeam, Agent, ResearchQuestion, ResearchTask,
+    Source, Claim, Evidence,
 )
 
 logger = get_logger("adaptive_engine")
@@ -265,6 +262,7 @@ class AdaptiveEngine:
                 "Return JSON: {should_replan: bool, reason: str, new_strategy: str|null, adjustments: [str]}"
             )
             result = await model_router.complete(
+                messages=[{"role": "user", "content": prompt}],
                 task_type=TaskType.SEARCH_PLANNING,
                 temperature=0.3, max_tokens=500,
             )
@@ -272,7 +270,7 @@ class AdaptiveEngine:
             if "```" in content:
                 content = content.split("```")[1].split("```")[0]
             return json.loads(content)
-        except Exception as e:
+        except Exception:
             return {"should_replan": False, "reason": "Check failed"}
 
     async def _llm_calibrate_depth(self, state):
@@ -284,6 +282,7 @@ class AdaptiveEngine:
                 "Return JSON: {depth: 'shallow'|'standard'|'deep'|'exhaustive', max_tasks: int, focus_areas: [str], reasoning: str}"
             )
             result = await model_router.complete(
+                messages=[{"role": "user", "content": prompt}],
                 task_type=TaskType.SEARCH_PLANNING,
                 temperature=0.3, max_tokens=500,
             )
@@ -291,7 +290,7 @@ class AdaptiveEngine:
             if "```" in content:
                 content = content.split("```")[1].split("```")[0]
             return json.loads(content)
-        except Exception as e:
+        except Exception:
             return {"depth": "standard", "max_tasks": 5, "focus_areas": [], "reasoning": "Default"}
 
     def _interpret_signals(self, evaluation, state):

@@ -1,6 +1,6 @@
 """Tests for the Springer Nature Meta + Open Access integration."""
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from app.services.springer_service import SpringerService, get_springer_service
 from app.core.external_client import RateLimitError
@@ -183,7 +183,8 @@ async def test_discovery_engine_springer_backend():
     assert "springer" in engine._search_backends
 
     sample = make_record(doi="10.1007/s99999", title="Discovered Springer Paper")
-    with patch.object(SpringerService, "search_papers", new=AsyncMock(return_value=[
+    with patch.object(SpringerService, "is_configured", new_callable=PropertyMock, return_value=True), \
+         patch.object(SpringerService, "search_papers", new=AsyncMock(return_value=[
         SpringerService()._parse_record(sample, source="Springer Meta")
     ])):
         res = await engine.search_springer("robotics", limit=5)

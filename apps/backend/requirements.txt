@@ -1,22 +1,19 @@
 fastapi==0.115.*
 uvicorn[standard]==0.34.*
-pydantic==2.11.*
 pydantic[email]==2.11.*
 pydantic-settings==2.9.*
 sqlalchemy==2.0.*
 alembic==1.14.*
 asyncpg==0.30.*
 python-jose[cryptography]==3.3.*
-passlib[bcrypt]==1.7.*
 python-multipart==0.0.9
 httpx>=0.28.1
 requests==2.32.*
 supabase>=2.31.0
 
 # LLM & Agent Frameworks
-agno[openai,groq,arxiv,pdf,lancedb,qdrant]==2.8.*
+agno[openai,arxiv,pdf,lancedb,qdrant]==2.8.*
 openai>=1.65.0
-groq==0.15.*
 google-genai>=2.0.0,<3
 ddgs==9.*
 arxiv==2.1.*
@@ -36,6 +33,18 @@ pymupdf==1.24.*
 python-json-logger==3.2.*
 aiosmtplib==3.0.*
 jinja2==3.1.*
-slowapi==0.1.*
 weasyprint==62.*
 numpy>=1.26
+
+# Observability (opt-in via env flags)
+prometheus-client>=0.21.0
+prometheus-fastapi-instrumentator>=7.0.0
+opentelemetry-api>=1.30.0
+opentelemetry-sdk>=1.30.0
+opentelemetry-exporter-otlp-proto-http>=1.30.0
+opentelemetry-instrumentation-fastapi>=0.51b0
+
+# MCP (SSE server + SurrealDB agent memory)
+mcp>=2.2.0
+sse-starlette>=3.0.0
+surrealdb>=2.0.0

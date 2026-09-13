@@ -14,14 +14,15 @@ Memory types:
 - entity: extracted entity or relationship
 """
 
-from datetime import datetime, timezone
+from datetime import timedelta
+from app.core.timeutil import utcnow
 from typing import Optional
 
-from sqlalchemy import select, desc, func, update
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
-from app.models.database import AgentMemory, Agent, Claim
+from app.models.database import AgentMemory
 
 logger = get_logger("agent_memory")
 
@@ -61,8 +62,7 @@ class AgentMemoryService:
 
         expires_at = None
         if expires_in_hours:
-            from datetime import timedelta
-            expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
+            expires_at = utcnow() + timedelta(hours=expires_in_hours)
 
         memory = AgentMemory(
             id=str(uuid.uuid4()),
@@ -74,7 +74,7 @@ class AgentMemoryService:
             source_claim_id=source_claim_id,
             is_active=True,
             expires_at=expires_at,
-            created_at=datetime.now(timezone.utc),
+            created_at=utcnow(),
         )
         db.add(memory)
 
@@ -110,7 +110,7 @@ class AgentMemoryService:
         """
         stmt = select(AgentMemory).where(
             AgentMemory.agent_id == agent_id,
-            AgentMemory.is_active == True,
+            AgentMemory.is_active,
         )
 
         if memory_type:
@@ -150,7 +150,7 @@ class AgentMemoryService:
         # Get recent high-confidence memories
         stmt = (
             select(AgentMemory)
-            .where(AgentMemory.agent_id == agent_id, AgentMemory.is_active == True)
+            .where(AgentMemory.agent_id == agent_id, AgentMemory.is_active)
             .order_by(desc(AgentMemory.confidence), desc(AgentMemory.created_at))
             .limit(30)
         )
@@ -166,13 +166,13 @@ class AgentMemoryService:
         for m in memories:
             if m.memory_type != current_type:
                 if section_items:
-                    sections.append(f"  " + chr(10).join(section_items))
+                    sections.append("  " + chr(10).join(section_items))
                 current_type = m.memory_type
                 section_items = []
             section_items.append(f"- [{m.confidence}%] {m.content[:200]}")
 
         if section_items:
-            sections.append(f"  " + chr(10).join(section_items))
+            sections.append("  " + chr(10).join(section_items))
 
         type_labels = {
             "finding": "Discoveries",
@@ -211,7 +211,7 @@ class AgentMemoryService:
             select(AgentMemory)
             .where(
                 AgentMemory.agent_id == from_agent_id,
-                AgentMemory.is_active == True,
+                AgentMemory.is_active,
                 AgentMemory.confidence >= 70,
             )
         )
@@ -233,7 +233,7 @@ class AgentMemoryService:
                 source_task_id=m.source_task_id,
                 source_claim_id=m.source_claim_id,
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
+                created_at=utcnow(),
             )
             db.add(new_mem)
             shared += 1
@@ -249,11 +249,18 @@ class AgentMemoryService:
         memory_id: Optional[str] = None,
     ) -> int:
         """Soft-delete memories. Returns count deleted."""
+        deleted = 0
+        stmt = select(AgentMemory).where(AgentMemory.agent_id == agent_id, AgentMemory.is_active)
         if memory_id:
-            stmt = select(AgentMemory).where(
-                AgentMemory.id == memory_id,
-                AgentMemory.agent_id == agent_id,
-            )
+            stmt = stmt.where(AgentMemory.id == memory_id)
+        elif memory_type:
+            stmt = stmt.where(AgentMemory.memory_type == memory_type)
+        for mem in (await db.execute(stmt)).scalars().all():
+            mem.is_active = False
+            deleted += 1
+        await db.commit()
+        return deleted
+
     async def get_all_memories(self, agent_id: str, db: AsyncSession) -> list[dict]:
         """Get all memories for an agent."""
         return await self.recall(agent_id, db, limit=MAX_MEMORIES_PER_AGENT)
@@ -263,7 +270,7 @@ class AgentMemoryService:
         count = await db.scalar(
             select(func.count()).where(
                 AgentMemory.agent_id == agent_id,
-                AgentMemory.is_active == True,
+                AgentMemory.is_active,
             )
         )
         if count and count >= MAX_MEMORIES_PER_AGENT:
@@ -271,7 +278,7 @@ class AgentMemoryService:
             old_memories = (
                 await db.execute(
                     select(AgentMemory)
-                    .where(AgentMemory.agent_id == agent_id, AgentMemory.is_active == True)
+                    .where(AgentMemory.agent_id == agent_id, AgentMemory.is_active)
                     .order_by(AgentMemory.confidence.asc(), AgentMemory.created_at.asc())
                     .limit(to_prune)
                 )

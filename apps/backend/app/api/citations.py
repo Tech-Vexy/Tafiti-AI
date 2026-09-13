@@ -15,7 +15,6 @@ from sqlalchemy.future import select
 from sqlalchemy import desc, or_
 from pydantic import BaseModel, Field
 from typing import List, Optional
-import re
 
 from app.db.session import get_db
 from app.models.database import SavedPaper

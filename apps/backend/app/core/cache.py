@@ -9,6 +9,10 @@ from app.core.logger import get_logger
 
 logger = get_logger("cache")
 
+# Global cache namespace: bump to invalidate ALL cached entries (e.g. after a
+# schema/semantics change) without waiting out every TTL.
+CACHE_NAMESPACE: str = "tafiti:v1"
+
 
 class RedisCache:
     def __init__(self):
@@ -84,8 +88,8 @@ class RedisCache:
             logger.warning(f"Redis clear_pattern error for '{pattern}': {e}")
     
     def make_key(self, prefix: str, *args, **kwargs) -> str:
-        """Generate cache key from prefix and arguments"""
-        parts = [prefix] + [str(arg) for arg in args]
+        """Generate cache key from prefix and arguments."""
+        parts = [CACHE_NAMESPACE, prefix] + [str(arg) for arg in args]
         if kwargs:
             parts.append(hashlib.md5(json.dumps(kwargs, sort_keys=True).encode()).hexdigest())
         return ":".join(parts)

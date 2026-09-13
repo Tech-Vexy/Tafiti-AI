@@ -15,17 +15,14 @@ and direct LLM calls.
 """
 
 import json
-from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.database import (
-    AgentTeam, Agent, AgentMessage, ResearchQuestion, ResearchTask,
-    Source, Passage, Claim,
+    Agent, ResearchQuestion, ResearchTask,
+    Claim,
 )
 
 logger = get_logger("agent_execution")
@@ -329,7 +326,8 @@ class AgentExecutionEngine:
             raw = result["content"].strip()
             if "```" in raw:
                 raw = raw.split("```")[1].split("```")[0]
-                if raw.startswith("json"): raw = raw[4:]
+                if raw.startswith("json"):
+                    raw = raw[4:]
             directions = json.loads(raw)
             return directions if isinstance(directions, list) else []
         except Exception as e:
@@ -357,7 +355,8 @@ class AgentExecutionEngine:
             raw = result["content"].strip()
             if "```" in raw:
                 raw = raw.split("```")[1].split("```")[0]
-                if raw.startswith("json"): raw = raw[4:]
+                if raw.startswith("json"):
+                    raw = raw[4:]
             parsed = json.loads(raw)
             return parsed if isinstance(parsed, list) else ["Continue research"]
         except Exception as e:

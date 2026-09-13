@@ -97,9 +97,7 @@ export interface User {
   created_at?: string;
 }
 
-export interface UserProfile extends User {
-  // Additional profile-specific fields
-}
+export type UserProfile = User;
 
 // ============================================
 // Notification Types

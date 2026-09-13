@@ -1,53 +1,49 @@
 # Tafiti AI
 
-A powerful, AI-powered research assistant integrated into a monorepo structure. This project combines modern React frontends with a robust FastAPI backend to provide deep research capabilities, semantic search, and synthesis.
+A powerful, AI-powered research assistant integrated into a monorepo structure. This project combines a modern Next.js frontend with a robust FastAPI backend to provide deep research capabilities, semantic search, and synthesis.
 
 ## Features
 
 - **Monorepo Architecture**: Managed with [Turborepo](https://turbo.build/repo) for efficient build and development workflows.
-- **Frontend**: React, Vite, Tailwind CSS, Zustand, Clerk Authentication.
-- **Landing Page**: Next.js, React, Framer Motion, Tailwind CSS.
-- **Backend**: FastAPI, Agno, PostgreSQL, Qdrant Vector Database.
-- **AI Integration**: Uses Groq/LLMs for synthesis, Google Gemini for deep research, and Arxiv for academic paper search.
-- **Institutional Sandboxes**: Branded workspaces for universities and events with role-based access.
-- **Micro-Bounties**: Financial and reputation bounties for paper reviews with Paystack integration.
+- **Frontend**: Next.js (App Router), React 19, MUI + Tailwind CSS, Zustand, Clerk Authentication, KaTeX.
+- **Backend**: FastAPI, Agno, PostgreSQL (Supabase/Neon), pgvector, SurrealDB, Redis, Celery.
+- **AI Integration**: Uses Nvidia/OpenRouter LLMs for fast synthesis, Google Gemini for deep research, and Arxiv/OpenAlex/Springer/Elsevier for academic paper search.
+- **Research workflow**: Streaming deep-research agents, literature synthesis, gap analysis, citation grounding, thesis editing with collaborative (Yjs) support.
+- **Billing**: Paystack subscription management with usage tiers.
 
 ## Project Structure
 
 ```
 Tafiti-AI/
 ├── apps/
-│   ├── backend/       # FastAPI server (@tafiti/backend)
-│   ├── frontend/      # React application (@tafiti/frontend)
-│   └── landing-page/  # Next.js landing page
-├── packages/          # Shared libraries (optional)
-├── package.json       # Root configuration
+│   ├── backend/       # FastAPI server (Python)
+│   └── frontend/      # Next.js application
+├── package.json       # Root configuration (npm workspaces)
 └── turbo.json         # Pipeline configuration
 ```
 
 ## Prerequisites
 
-- **Node.js**: v18+ (Required for frontend, landing page, and Turbo)
-- **Python**: v3.10+ (Required for backend)
-- **PostgreSQL**: v14+ (Required for database)
-- **Qdrant**: (Required for vector database)
-- **Redis**: (Optional, for caching)
+- **Node.js**: v20+ (required for frontend and Turbo)
+- **Python**: v3.12+ (required for backend)
+- **PostgreSQL**: v14+ (required for database; pgvector extension for vector search)
+- **Redis**: (optional, for caching and Celery)
 
 ## Getting Started
 
 ### 1. Install Dependencies
 
-Install Node.js dependencies from the root:
+Install Node.js dependencies from the root (pnpm is the package manager; a `pnpm-lock.yaml` is committed):
 
 ```bash
-npm install
+pnpm install
 ```
 
-Install Python dependencies for the backend:
+Install Python dependencies for the backend (uv recommended; a `uv.lock` is provided):
 
 ```bash
 cd apps/backend
-pip install -r requirements.txt
+uv sync           # or: pip install -r requirements.txt
 ```
 
 ### Developer setup (recommended)
@@ -72,23 +68,21 @@ pytest -q
 
 You will need to set up environment variables for all applications.
 
-- **Backend**: Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in your API keys (Groq, Google, Postgres, etc.).
+- **Backend**: Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in your API keys (Google, Postgres, etc.).
 - **Frontend**: Copy `apps/frontend/.env.example` to `apps/frontend/.env` and configure your Clerk keys.
-- **Landing Page**: No environment variables required for basic functionality.
 
 ### 3. Start Development Server
 
 You can run all applications simultaneously from the root:
 
 ```bash
-npm run dev
+pnpm dev
 # or
 npx turbo dev
 ```
 
-- **Frontend**: http://localhost:5173
+- **Frontend**: http://localhost:3000
 - **Backend**: http://localhost:8000
-- **Landing Page**: http://localhost:3000
 - **API Docs**: http://localhost:8000/docs
 
 ### 4. Build for Production
@@ -96,7 +90,7 @@ npx turbo dev
 To build all applications:
 
 ```bash
-npm run build
+pnpm build
 # or
 npx turbo build
 ```
@@ -104,16 +98,20 @@ npx turbo build
 ## Commands
 
 | Command | Description |
-|Args|Description|
 |---|---|
-| `npm run dev` | Start development servers for all apps |
-| `npm run build` | Build all apps |
-| `npm run lint` | Lint all apps |
-| `npm run format` | Format code with Prettier |
+| `pnpm dev` | Start development servers for all apps |
+| `pnpm build` | Build all apps |
+| `pnpm lint` | Lint all apps |
+| `pnpm format` | Format code with Prettier |
+
+## Continuous Integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
+- **Backend**: ruff lint, pytest, pyright typecheck (currently non-blocking while typing debt is paid down)
+- **Frontend**: eslint lint, `tsc` typecheck, vitest tests, production build
 
 ## Documentation
 
 For more specific details, please refer to the application READMEs:
 - [Backend Documentation](apps/backend/README.md)
 - [Frontend Documentation](apps/frontend/README.md)
-- [Landing Page Documentation](apps/landing-page/README.md)

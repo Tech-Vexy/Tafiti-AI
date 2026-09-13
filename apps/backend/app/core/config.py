@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
 from functools import lru_cache
 import os
@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     DATABASE_ECHO: bool = False
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
+
+    # SurrealDB (SurrealDB Cloud / Self-hosted multi-model DB)
+    SURREALDB_URL: Optional[str] = None
+    SURREALDB_HTTP_URL: Optional[str] = None
+    SURREALDB_NAMESPACE: str = "tafiti"
+    SURREALDB_DATABASE: str = "tafiti"
+    SURREALDB_USER: Optional[str] = None
+    SURREALDB_PASSWORD: Optional[str] = None
+    SURREALDB_TOKEN: Optional[str] = None
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -35,8 +44,6 @@ class Settings(BaseSettings):
     
     # LLM Providers
     OPENAI_API_KEY: Optional[str] = None
-    GROQ_API_KEY: Optional[str] = None
-    ANTHROPIC_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
     NVIDIA_API_KEY: Optional[str] = None
     NVIDIA_BUILD_API_KEY: Optional[str] = None
@@ -72,7 +79,12 @@ class Settings(BaseSettings):
     # Google / Gemini (Gemini 3.x Series)
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
-    GEMINI_DEFAULT_MODEL: str = "gemini-3.5-pro"
+    GEMINI_DEFAULT_MODEL: str = "deep-research-preview-04-2026"
+    GEMINI_SUPPORTED_MODELS: list[str] = [
+        "deep-research-preview-04-2026",
+        "deep-research-max-preview-04-2026",
+        "deep-research-preview",
+    ]
 
     @property
     def gemini_api_key(self) -> Optional[str]:
@@ -83,9 +95,11 @@ class Settings(BaseSettings):
     # https://ai.google.dev/gemini-api/docs/deep-research
     GEMINI_DEEP_RESEARCH_AGENT: str = "deep-research-preview-04-2026"
     GEMINI_DEEP_RESEARCH_MAX_AGENT: str = "deep-research-max-preview-04-2026"
-    GEMINI_DEEP_RESEARCH_THINKING_SUMMARIES: str = "none"  # "auto" or "none"
+    GEMINI_DEEP_RESEARCH_THINKING_SUMMARIES: str = "auto"  # "auto" or "none"
     GEMINI_DEEP_RESEARCH_VISUALIZATION: str = "auto"       # "auto" or "off"
     GEMINI_DEEP_RESEARCH_COLLABORATIVE_PLANNING: bool = False
+    GEMINI_DEEP_RESEARCH_SEARCH: bool = True
+    GEMINI_DEEP_RESEARCH_URL_CONTEXT: bool = True
 
     # CORE API (https://core.ac.uk/services/api)
     CORE_API_KEY: Optional[str] = None
@@ -115,15 +129,6 @@ class Settings(BaseSettings):
     def springer_oa_key(self) -> Optional[str]:
         """Return SPRINGER_OPEN_ACCESS_API_KEY, falling back to SPRINGER_API_KEY."""
         return self.SPRINGER_OPEN_ACCESS_API_KEY or self.SPRINGER_API_KEY
-
-    # DOAJ — Directory of Open Access Journals (no key required)
-    DOAJ_API_URL: str = "https://doaj.org/api/search/articles"
-
-    # AJOL — African Journals Online (OAI-PMH, no key required)
-    AJOL_OAI_URL: str = "https://www.ajol.info/index.php/ajol/oai"
-
-    # AfricArXiv via DataCite REST API (no key required)
-    AFRICARXIV_API_URL: str = "https://api.datacite.org/dois"
 
     # Parallel Web Search API (https://parallel.ai)
     PARALLEL_API_KEY: Optional[str] = None
@@ -164,15 +169,16 @@ class Settings(BaseSettings):
     ADMIN_EMAILS: List[str] = []
 
     CLERK_DOMAIN: Optional[str] = None
-    CLERK_AUDIENCE: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "https://app.tafitiai.co.ke",
-        "https://www.tafitiai.co.ke",
-        "https://tafitiai-app.netlify.app",
-    ]
+    # Optional explicit issuer / JWKS URL overrides (CLERK_DOMAIN is preferred).
+    CLERK_ISSUER: Optional[str] = None
+    CLERK_JWKS_URL: Optional[str] = None
+    # Audience list. When unset, ALLOWED_ORIGINS is used (single source of truth).
+    CLERK_AUDIENCE: Optional[List[str]] = None
+
+    @property
+    def clerk_audience(self) -> List[str]:
+        """Token audience. Falls back to ALLOWED_ORIGINS to avoid duplicate lists."""
+        return self.CLERK_AUDIENCE if self.CLERK_AUDIENCE is not None else self.ALLOWED_ORIGINS
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -182,18 +188,6 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
-    # ORCID OAuth
-    ORCID_CLIENT_ID: Optional[str] = None
-    ORCID_CLIENT_SECRET: Optional[str] = None
-    ORCID_API_URL: str = "https://pub.orcid.org/v3.0"
-    ORCID_TOKEN_URL: str = "https://orcid.org/oauth/token"
-
-    # Email / SMTP (for Ghost Profile invites)
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: Optional[str] = None
-    SMTP_PASSWORD: Optional[str] = None
-    EMAIL_FROM: str = "noreply@tafitiai.co.ke"
     FRONTEND_URL: str = "https://app.tafitiai.co.ke"
 
     # Pydantic AI Model Routing (Drafter & Critic via OpenRouter)
@@ -203,8 +197,17 @@ class Settings(BaseSettings):
     # Cryptographic Anchoring (SHA-256 draft hashing)
     ANCHOR_WEBHOOK_URL: Optional[str] = None
 
+    # Observability (OpenTelemetry + Prometheus). Both are opt-in.
+    OTEL_SERVICE_NAME: str = "tafiti-backend"
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+    ENABLE_PROMETHEUS: bool = False
+
     def validate_config(self) -> None:
         """Validate critical configuration settings."""
+        if self.gemini_api_key:
+            os.environ.setdefault("GOOGLE_API_KEY", self.gemini_api_key)
+            os.environ.setdefault("GEMINI_API_KEY", self.gemini_api_key)
+
         if self.ENVIRONMENT == "production":
             # Secrets must be set and not be the dev defaults
             _dev_key = "dev-only-not-for-production-please-change-me-32chars!!"
@@ -221,10 +224,11 @@ class Settings(BaseSettings):
             if not self.PAYSTACK_SECRET_KEY:
                 logger.warning("PAYSTACK_SECRET_KEY not set — billing features will not work")
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 @lru_cache()

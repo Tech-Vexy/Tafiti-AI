@@ -11,13 +11,10 @@ Responsibilities:
 - Manage the evidence ↔ claim relationship graph
 """
 
-from datetime import datetime, timezone
-from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.database import (
     Source, Passage, Evidence, Claim,
@@ -228,25 +225,26 @@ class EvidenceEngine:
         for i, claim_a in enumerate(claims):
             for claim_b in claims[i + 1:]:
                 # Check if they share contradicting evidence
-                ev_a = await db.execute(
-                    select(Evidence).where(
+                ev_a_rows = (await db.execute(
+                    select(Evidence.id).where(
                         Evidence.claim_id == claim_a.id,
                         Evidence.relation == "contradicts",
                     )
-                )
-                ev_b = await db.execute(
-                    select(Evidence).where(
+                )).scalars().all()
+                ev_b_rows = (await db.execute(
+                    select(Evidence.id).where(
                         Evidence.claim_id == claim_b.id,
                         Evidence.relation == "contradicts",
                     )
-                )
+                )).scalars().all()
+                share_contradicting_evidence = bool(ev_a_rows and ev_b_rows)
 
                 # Simple contradiction detection: check for negation word overlap
                 words_a = set(claim_a.text.lower().split())
                 words_b = set(claim_b.text.lower().split())
                 negation_words = {"not", "no", "never", "does", "is", "are", "was", "were"}
 
-                if words_a & negation_words and words_b & negation_words:
+                if share_contradicting_evidence or (words_a & negation_words and words_b & negation_words):
                     shared_subject = (words_a - negation_words) & (words_b - negation_words)
                     if len(shared_subject) >= 2:
                         contradictions.append({

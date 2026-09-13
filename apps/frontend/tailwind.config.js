@@ -2,16 +2,13 @@
 module.exports = {
     darkMode: ["class"],
     content: [
-        "./src/**/*.{js,ts,jsx,tsx,mdx}",
+        "./src/**/*.{ts,tsx,mdx}",
     ],
     safelist: [
-        'bg-indigo-500/10', 'bg-indigo-500/20', 'border-indigo-500/20', 'text-indigo-400',
-        'bg-violet-500/10', 'bg-violet-500/20', 'border-violet-500/20', 'text-violet-400',
+        'bg-sky-500/10', 'bg-sky-500/20', 'border-sky-500/20', 'text-sky-400',
         'bg-emerald-500/10', 'bg-emerald-500/20', 'border-emerald-500/20', 'text-emerald-400',
         'bg-amber-500/10', 'bg-amber-500/20', 'border-amber-500/20', 'text-amber-400',
         'bg-rose-500/10', 'bg-rose-500/20', 'border-rose-500/20', 'text-rose-400',
-        'bg-sky-500/10', 'bg-sky-500/20', 'border-sky-500/20', 'text-sky-400',
-        'bg-fuchsia-500/10', 'bg-fuchsia-500/20', 'border-fuchsia-500/20', 'text-fuchsia-400',
     ],
     theme: {
         container: {
@@ -23,6 +20,12 @@ module.exports = {
             },
         },
         extend: {
+            fontFamily: {
+                sans: ['var(--font-inter)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'sans-serif'],
+                mono: ['var(--font-mono)', 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+                math: ['KaTeX_Math', 'KaTeX_Main', 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Computer Modern', 'Times New Roman', 'serif'],
+                latex: ['KaTeX_Main', 'KaTeX_Math', 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', 'Computer Modern', 'Times New Roman', 'serif'],
+            },
             screens: {
                 'xs': '475px',
                 '2xl': '1536px',
@@ -34,6 +37,23 @@ module.exports = {
                 '128': '32rem',
             },
             colors: {
+                // User-specified theme palette:
+                // Dark mode: #1E1D1C, #383B43, #171616, #171715
+                // Light mode: #FDFBFA, #8A8884, #FDFAF9, #3A3D45
+                theme: {
+                    dark: {
+                        bg: '#171616',
+                        surface: '#1E1D1C',
+                        card: '#171715',
+                        border: '#383B43',
+                    },
+                    light: {
+                        bg: '#FDFBFA',
+                        surface: '#FDFAF9',
+                        muted: '#8A8884',
+                        text: '#3A3D45',
+                    },
+                },
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
                 ring: "hsl(var(--ring))",

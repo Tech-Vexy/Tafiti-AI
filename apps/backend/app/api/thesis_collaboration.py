@@ -6,14 +6,14 @@ REST:     /thesis/{thesis_id}/collaborators  (GET participants)
           /thesis/{thesis_id}/collaborate     (POST invite, PATCH role)
 """
 import json
-from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import Optional
 
 from app.db.session import get_db
-from app.models.database import Thesis, User
+from app.models.database import Thesis, ThesisCollaborator, User
 from app.core.security import get_current_user, decode_token
 from app.core.logger import get_logger
 from app.services.collaboration_ws import collaboration_manager
@@ -61,7 +61,7 @@ async def thesis_collaboration_ws(
         return
 
     try:
-        payload = decode_token(token)
+        payload = await decode_token(token)
         user_id = payload.get("sub") or payload.get("user_id")
         if not user_id:
             await websocket.close(code=4001, reason="Invalid token")
@@ -85,8 +85,18 @@ async def thesis_collaboration_ws(
         if thesis.user_id == user_id:
             role = "owner"
         else:
-            # Check if user is a project member with access
-            role = "editor"  # default for authenticated users with access
+            collaborator_result = await db.execute(
+                select(ThesisCollaborator).where(
+                    ThesisCollaborator.thesis_id == thesis_id,
+                    ThesisCollaborator.user_id == user_id,
+                    ThesisCollaborator.status == "active",
+                )
+            )
+            collaborator = collaborator_result.scalar_one_or_none()
+            if not collaborator:
+                await websocket.close(code=4003, reason="You do not have access to this thesis")
+                return
+            role = collaborator.role
 
         # Get user display name
         user_result = await db.execute(select(User).where(User.id == user_id))
@@ -95,7 +105,7 @@ async def thesis_collaboration_ws(
         avatar_url = None  # Could be extended with avatar URL
 
     # Connect to the collaboration room
-    room = await collaboration_manager.connect(
+    await collaboration_manager.connect(
         thesis_id=thesis_id,
         user_id=user_id,
         display_name=display_name,
@@ -131,12 +141,18 @@ async def get_collaborators(
 ):
     """Get current collaborators for a thesis (who's online)."""
     # Verify access
-    result = await db.execute(
-        select(Thesis).where(Thesis.id == thesis_id, Thesis.user_id == current_user["user_id"])
-    )
+    result = await db.execute(select(Thesis).where(Thesis.id == thesis_id))
     thesis = result.scalar_one_or_none()
     if not thesis:
         raise HTTPException(status_code=404, detail="Thesis not found")
+    if thesis.user_id != current_user["user_id"]:
+        access = await db.execute(select(ThesisCollaborator).where(
+            ThesisCollaborator.thesis_id == thesis_id,
+            ThesisCollaborator.user_id == current_user["user_id"],
+            ThesisCollaborator.status == "active",
+        ))
+        if not access.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="You do not have access to this thesis")
 
     participants = collaboration_manager.get_participants(thesis_id)
     return {
@@ -165,6 +181,8 @@ async def invite_collaborator(
     target_id = invite_data.get("user_id")
     target_email = invite_data.get("email")
     role = invite_data.get("role", "editor")
+    if role not in {"editor", "viewer"}:
+        raise HTTPException(status_code=400, detail="Role must be editor or viewer")
 
     if not target_id and not target_email:
         raise HTTPException(status_code=400, detail="Provide user_id or email")
@@ -186,6 +204,16 @@ async def invite_collaborator(
         link=f"/thesis/{thesis_id}",
     )
     db.add(notification)
+    collaborator_result = await db.execute(select(ThesisCollaborator).where(
+        ThesisCollaborator.thesis_id == thesis_id,
+        ThesisCollaborator.user_id == target_id,
+    ))
+    collaborator = collaborator_result.scalar_one_or_none()
+    if collaborator:
+        collaborator.role = role
+        collaborator.status = "active"
+    else:
+        db.add(ThesisCollaborator(thesis_id=thesis_id, user_id=target_id, role=role, status="active"))
     await db.commit()
 
     return {"status": "invited", "thesis_id": thesis_id, "invited_user": target_id, "role": role}
@@ -208,8 +236,6 @@ async def get_active_theses(
 # ---------------------------------------------------------------------------
 # Helper: get an async session outside of FastAPI dependency injection
 # ---------------------------------------------------------------------------
-
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def get_db_session():

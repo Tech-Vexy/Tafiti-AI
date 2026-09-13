@@ -11,20 +11,6 @@ const nextConfig = {
   transpilePackages: [
     'lucide-react',
     'clsx',
-    '@syncfusion/ej2-base',
-    '@syncfusion/ej2-buttons',
-    '@syncfusion/ej2-inputs',
-    '@syncfusion/ej2-popups',
-    '@syncfusion/ej2-lists',
-    '@syncfusion/ej2-navigations',
-    '@syncfusion/ej2-splitbuttons',
-    '@syncfusion/ej2-dropdowns',
-    '@syncfusion/ej2-documenteditor',
-    '@syncfusion/ej2-react-documenteditor',
-    '@syncfusion/ej2-data',
-    '@syncfusion/ej2-compression',
-    '@syncfusion/ej2-file-utils',
-    '@syncfusion/ej2-svg-base',
   ],
 
   images: {
@@ -36,31 +22,55 @@ const nextConfig = {
   },
 
   async headers() {
+    const isProd = process.env.NODE_ENV === 'production';
+
+    const connectSrc = [
+      "'self'",
+      "https://*.clerk.accounts.dev",
+      "wss://*.clerk.accounts.dev",
+      "https://api.openalex.org",
+      "https://api.springernature.com",
+      "https://api.elsevier.com",
+      "wss://*",
+      ...(!isProd ? ["http://localhost:*", "http://127.0.0.1:*", "ws://localhost:*", "ws://127.0.0.1:*"] : []),
+    ].join(' ');
+
+    const cspDirectives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.clerk.ms https://img.clerk.com https://*.clerk.accounts.dev",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' blob: data: https: https://img.clerk.com https://*.supabase.co",
+      `connect-src ${connectSrc}`,
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+      ...(isProd ? ["upgrade-insecure-requests"] : []),
+    ].join('; ');
+
+    const securityHeaders = [
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+      { key: 'X-DNS-Prefetch-Control', value: 'on' },
+      { key: 'Content-Security-Policy', value: cspDirectives },
+      ...(isProd
+        ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' }]
+        : []),
+    ];
+
     return [
       {
         source: '/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-          { key: 'X-DNS-Prefetch-Control', value: 'on' },
-        ],
+        headers: securityHeaders,
       },
       {
         source: '/fonts/:path*',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
-      },
-    ];
-  },
-
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/:path*`,
       },
     ];
   },

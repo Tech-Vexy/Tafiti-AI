@@ -1,10 +1,22 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/Providers';
-import '@fontsource/roboto/300.css';
-import '@fontsource/roboto/400.css';
-import '@fontsource/roboto/500.css';
-import '@fontsource/roboto/700.css';
+import 'katex/dist/katex.min.css';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+  weight: ['300', '400', '500', '600', '700', '800'],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-mono',
+  weight: ['400', '500', '600'],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://tafitiai.co.ke'),
@@ -88,16 +100,54 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-          rel="stylesheet"
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Tafiti AI" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="msapplication-TileColor" content="#030305" />
+        <meta name="application-name" content="Tafiti AI" />
+        <link rel="canonical" href="https://tafitiai.co.ke" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "Tafiti AI",
+              url: "https://tafitiai.co.ke",
+              logo: "https://tafitiai.co.ke/android-chrome-512x512.png",
+              email: "hello@tafitiai.co.ke",
+              description: "AI-powered academic research platform for African researchers.",
+              sameAs: ["https://twitter.com/tafitiai", "https://linkedin.com/company/tafitiai", "https://github.com/tafitiai"]
+            })
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "Tafiti AI",
+              url: "https://tafitiai.co.ke",
+              potentialAction: {
+                "@type": "SearchAction",
+                target: "https://tafitiai.co.ke/?q={search_term_string}",
+                "query-input": "required name=search_term_string"
+              }
+            })
+          }}
         />
       </head>
-      <body className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] antialiased">
+      <body className={`${inter.className} min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] font-sans antialiased`} suppressHydrationWarning>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-[var(--bg-card)] focus:text-[var(--text-main)] focus:rounded-lg focus:border focus:border-[var(--border-glass)] focus:shadow-xl focus:outline-none focus:ring-2 focus:ring-sky-500"
+        >
+          Skip to content
+        </a>
         <Providers>{children}</Providers>
       </body>
     </html>

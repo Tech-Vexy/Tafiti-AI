@@ -8,12 +8,11 @@ Manages:
 - Permission checks (owner, editor, viewer)
 - Heartbeat/ping for stale connection cleanup
 """
-import json
 import time
 import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 from app.core.logger import get_logger
 
 logger = get_logger("collaboration_ws")
@@ -77,8 +76,8 @@ class ThesisRoom:
             old_ws = self.connections[user_id]
             try:
                 await old_ws.close(code=4000, reason="reconnected")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to close stale WebSocket for {user_id}: {e}")
 
         self.connections[user_id] = ws
         self.collaborators[user_id] = CollaboratorInfo(

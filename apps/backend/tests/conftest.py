@@ -29,10 +29,10 @@ _mock_vs.add_query = MagicMock()
 _mock_vs.delete_query = MagicMock()
 sys.modules["app.services.vector_service"] = _mock_vs
 
-from main import app
-from app.db.session import Base, get_db
-from app.core.security import get_current_user
-from app.models.database import User
+from main import app  # noqa: E402
+from app.db.session import Base, get_db  # noqa: E402
+from app.core.security import get_current_user  # noqa: E402
+from app.models.database import User  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

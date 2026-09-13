@@ -5,7 +5,6 @@ Provides comprehensive input validation and sanitization for API endpoints.
 """
 
 import re
-from typing import Optional, List
 from pydantic import BaseModel, field_validator, Field
 from fastapi import HTTPException, status
 from app.core.logger import get_logger

@@ -5,6 +5,7 @@ Provides consistent response structures across all API endpoints.
 """
 
 from typing import Generic, TypeVar, Optional, Any, List
+from app.core.timeutil import utcnow
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
@@ -17,7 +18,7 @@ class APIResponse(BaseModel, Generic[T]):
     data: Optional[T] = Field(None, description="Response data payload")
     message: Optional[str] = Field(None, description="Human-readable message")
     error: Optional[str] = Field(None, description="Error message if request failed")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    timestamp: datetime = Field(default_factory=utcnow, description="Response timestamp")
     
     model_config = ConfigDict(json_schema_extra={
         "example": {
@@ -39,7 +40,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page_size: int = Field(..., description="Number of items per page")
     total_pages: int = Field(..., description="Total number of pages")
     message: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     
     model_config = ConfigDict(json_schema_extra={
         "example": {
@@ -68,7 +69,7 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error type or code")
     message: str = Field(..., description="Human-readable error message")
     details: Optional[List[ValidationError]] = Field(None, description="Detailed validation errors")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     
     model_config = ConfigDict(json_schema_extra={
         "example": {
@@ -91,7 +92,7 @@ class HealthCheckResponse(BaseModel):
     """Health check response with dependency status."""
     status: str = Field(..., description="Overall health status: healthy, degraded, unhealthy")
     version: str = Field(..., description="API version")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     dependencies: dict = Field(default_factory=dict, description="Status of external dependencies")
     
     model_config = ConfigDict(json_schema_extra={

@@ -6,7 +6,7 @@ Inspired by ResearchRabbit's timeline views and Undermind's field evolution maps
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from app.core.config import settings
 from app.core.security import get_current_user
@@ -122,6 +122,7 @@ async def generate_research_timeline(
     try:
         model = _build_model()
         agent = Agent(model=model, system_message=system_prompt, markdown=False)
+        response = await agent.arun(user_query)
         res_content = getattr(response, "content", None)
         content = str(res_content) if res_content is not None else str(response or "")
 

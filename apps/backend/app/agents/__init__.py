@@ -1,31 +1,18 @@
 """
-Agno 2.x Agent Infrastructure
-==============================
-Multi-agent research platform built on Agno 2.8.x SDK.
-
-Primitives:
-- Agent: Core unit with model, tools, memory, knowledge
-- Team: Supervisor mode with dynamic delegation
-- Workflow: Sequential/parallel/conditional research pipeline
-- Memory: User + agent level persistence via Supabase
-- Knowledge: RAG with Qdrant vector database
-
-Architecture:
-    User → Research Team (Supervisor) → Agents → Workflow → Knowledge/Memory
+Tafiti AI Research Agents
+=========================
+- DeepResearchAgent: Single production autonomous deep research agent built on Agno
+  and Gemini Interactions API (deep-research-preview-04-2026) for initial literature research.
+- ResearchAgent: Interactive follow-up agent maintaining conversation history,
+  plus analytical gap analysis and paper impact evaluation.
 """
 
-from app.agents.research_agent import get_research_agent
-from app.agents.critic_agent import get_drafter, get_critic, validated_synthesis
-from app.agents.validation_agent import get_validation_agent
-from app.agents.research_team import get_research_team, research_team_run
+from app.agents.deep_research_agent import DeepResearchAgent, get_deep_research_agent
+from app.agents.research_agent import ResearchAgent, get_research_agent
 
 __all__ = [
+    "DeepResearchAgent",
+    "get_deep_research_agent",
+    "ResearchAgent",
     "get_research_agent",
-
-    "get_drafter",
-    "get_critic",
-    "validated_synthesis",
-    "get_validation_agent",
-    "get_research_team",
-    "research_team_run",
 ]

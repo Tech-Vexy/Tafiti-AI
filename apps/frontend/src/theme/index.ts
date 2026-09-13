@@ -71,52 +71,60 @@ export const lightTheme = createTheme({
     },
     success: tafitiPalette.mint,
     background: {
-      default: '#f8fafc',
-      paper: '#ffffff',
+      default: '#FDFBFA',
+      paper: '#FDFAF9',
     },
     text: {
-      primary: '#0f172a',
-      secondary: '#475569',
-      disabled: '#94a3b8',
+      primary: '#3A3D45',
+      secondary: '#8A8884',
+      disabled: 'rgba(138, 136, 132, 0.6)',
     },
-    divider: 'rgba(15, 23, 42, 0.06)',
+    divider: 'rgba(138, 136, 132, 0.2)',
   },
   shape: {
     borderRadius: 12,
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: 'var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     h1: {
-      fontWeight: 900,
-      letterSpacing: '-0.02em',
+      fontWeight: 700,
+      letterSpacing: '-0.025em',
     },
     h2: {
-      fontWeight: 800,
+      fontWeight: 700,
       letterSpacing: '-0.02em',
     },
     h3: {
-      fontWeight: 800,
-      letterSpacing: '-0.01em',
+      fontWeight: 600,
+      letterSpacing: '-0.015em',
     },
     h4: {
-      fontWeight: 700,
+      fontWeight: 600,
       letterSpacing: '-0.01em',
     },
     h5: {
-      fontWeight: 700,
+      fontWeight: 600,
+      letterSpacing: '-0.005em',
     },
     h6: {
-      fontWeight: 700,
+      fontWeight: 600,
     },
     button: {
-      fontWeight: 700,
+      fontWeight: 600,
       textTransform: 'none',
+      letterSpacing: '-0.005em',
     },
     body1: {
       fontSize: '0.9375rem',
+      fontWeight: 400,
+      lineHeight: 1.6,
+      letterSpacing: '-0.006em',
     },
     body2: {
       fontSize: '0.875rem',
+      fontWeight: 400,
+      lineHeight: 1.5,
+      letterSpacing: '-0.006em',
     },
   },
   components: {
@@ -286,15 +294,15 @@ export const darkTheme = createTheme({
     },
     success: tafitiPalette.mint,
     background: {
-      default: '#030305',
-      paper: '#0a0a0f',
+      default: '#171616',
+      paper: '#1E1D1C',
     },
     text: {
-      primary: '#ffffff',
-      secondary: '#94a3b8',
-      disabled: '#475569',
+      primary: '#FDFBFA',
+      secondary: '#8A8884',
+      disabled: '#383B43',
     },
-    divider: 'rgba(255, 255, 255, 0.05)',
+    divider: '#383B43',
   },
   shape: {
     borderRadius: 12,

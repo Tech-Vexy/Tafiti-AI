@@ -6,9 +6,11 @@ This provides consistent error handling, retry logic, rate limiting, and caching
 import httpx
 from typing import List, Dict, Any, Optional
 import asyncio
+import xml.etree.ElementTree as ET
 
 from app.core.config import settings
 from app.core.external_client import BaseExternalClient, ExternalAPIError
+from app.core.cache import cache
 from app.models.schemas import PaperBase
 from app.core.logger import get_logger
 
@@ -30,17 +32,10 @@ class OpenAlexService(BaseExternalClient):
             cache_ttl=3600,
             api_key=settings.OPENALEX_API_KEY,
             rate_limit_per_minute=None,  # OpenAlex has generous limits
+            client=client,  # inject the shared app-level httpx client when available
         )
         self.email = settings.OPENALEX_EMAIL
-        self._shared_client = client
-    
-    @property
-    def client(self) -> httpx.AsyncClient:
-        """Use shared client if provided, otherwise use base client."""
-        if self._shared_client:
-            return self._shared_client
-        return super().client
-    
+
     def _build_headers(self, additional_headers: Optional[Dict] = None) -> Dict[str, str]:
         """Build headers with OpenAlex-specific requirements."""
         headers = super()._build_headers(additional_headers)
@@ -79,13 +74,28 @@ class OpenAlexService(BaseExternalClient):
         authors = self._extract_authors(work.get('authorships', []))
         paper_id = work['id'].split('/')[-1]
         
+        doi = work.get('doi')
+        if doi and doi.startswith('https://doi.org/'):
+            doi = doi.replace('https://doi.org/', '')
+            
+        primary_loc = work.get('primary_location') or {}
+        source_obj = primary_loc.get('source') or {}
+        source_name = source_obj.get('display_name') or 'OpenAlex'
+        landing_url = primary_loc.get('landing_page_url') or (f"https://doi.org/{doi}" if doi else f"https://openalex.org/{paper_id}")
+        pdf_url = primary_loc.get('pdf_url') or (work.get('open_access') or {}).get('oa_url')
+        
         return PaperBase(
             id=paper_id,
             title=work['title'],
             year=work['publication_year'],
             citations=work['cited_by_count'],
             abstract=abstract[:1500],
-            authors=authors
+            authors=authors,
+            doi=doi,
+            url=landing_url,
+            pdf_url=pdf_url,
+            source=source_name,
+            publisher=source_obj.get('publisher') or source_name,
         )
     
     def _parse_work_minimal(self, work: Dict[str, Any]) -> Optional[PaperBase]:
@@ -95,13 +105,29 @@ class OpenAlexService(BaseExternalClient):
         abstract = self._reconstruct_abstract(work.get('abstract_inverted_index')) or ''
         authors = self._extract_authors(work.get('authorships', []))
         paper_id = work['id'].split('/')[-1]
+        
+        doi = work.get('doi')
+        if doi and doi.startswith('https://doi.org/'):
+            doi = doi.replace('https://doi.org/', '')
+            
+        primary_loc = work.get('primary_location') or {}
+        source_obj = primary_loc.get('source') or {}
+        source_name = source_obj.get('display_name') or 'OpenAlex'
+        landing_url = primary_loc.get('landing_page_url') or (f"https://doi.org/{doi}" if doi else f"https://openalex.org/{paper_id}")
+        pdf_url = primary_loc.get('pdf_url') or (work.get('open_access') or {}).get('oa_url')
+
         return PaperBase(
             id=paper_id,
             title=work['title'],
             year=work.get('publication_year'),
             citations=work.get('cited_by_count', 0),
             abstract=abstract[:1500],
-            authors=authors
+            authors=authors,
+            doi=doi,
+            url=landing_url,
+            pdf_url=pdf_url,
+            source=source_name,
+            publisher=source_obj.get('publisher') or source_name,
         )
     
     async def search_papers(
@@ -126,7 +152,7 @@ class OpenAlexService(BaseExternalClient):
         params = {
             "search": query,
             "per_page": min(limit, settings.MAX_PAPERS_PER_QUERY),
-            "select": "id,title,publication_year,cited_by_count,abstract_inverted_index,authorships",
+            "select": "id,title,publication_year,cited_by_count,abstract_inverted_index,authorships,doi,primary_location,open_access",
             "mailto": self.email
         }
         
@@ -365,9 +391,6 @@ def get_openalex_service(client: Optional[httpx.AsyncClient] = None) -> OpenAlex
 
 # ─── arXiv Service ────────────────────────────────────────────────────────────
 
-import xml.etree.ElementTree as ET
-from app.core.cache import cache
-
 arxiv_logger = get_logger("arxiv")
 
 
@@ -406,6 +429,7 @@ class ArxivService:
             except ValueError:
                 pass
 
+        clean_arxiv_id = arxiv_id.replace("_", "/")
         return PaperBase(
             id=f"arxiv:{arxiv_id}",
             title=title,
@@ -413,6 +437,10 @@ class ArxivService:
             citations=0,
             abstract=abstract[:1500],
             authors=authors,
+            url=f"https://arxiv.org/abs/{clean_arxiv_id}",
+            pdf_url=f"https://arxiv.org/pdf/{clean_arxiv_id}.pdf",
+            source="arXiv.org",
+            publisher="arXiv Preprints",
         )
 
     async def search_papers(self, query: str, limit: int = 10) -> List[PaperBase]:

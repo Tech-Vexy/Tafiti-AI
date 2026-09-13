@@ -1,11 +1,13 @@
-from datetime import datetime
+from app.core.timeutil import utcnow
 import json
 import os
 import uuid
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON, Index, LargeBinary
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, JSON, Index, LargeBinary, UniqueConstraint
 from sqlalchemy import TypeDecorator
 from sqlalchemy.orm import relationship
+
+from app.db.session import Base
 
 if os.environ.get("TESTING") == "1":
     JSONB = JSON
@@ -13,8 +15,6 @@ else:
     from sqlalchemy.dialects.postgresql import JSONB
 
 DB_JSON = JSON if os.environ.get("TESTING") else JSONB
-
-from app.db.session import Base
 
 class FlexibleJSONB(TypeDecorator):
     impl = JSON().with_variant(JSONB, "postgresql")
@@ -53,8 +53,8 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True) # Optional with Neon Auth
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     last_login = Column(DateTime, nullable=True)
     
     # Academic Profile Fields
@@ -102,9 +102,7 @@ class User(Base):
     )
 
     # Research Intelligence Layer
-    # (backrefs: research_questions via ResearchQuestion.user)
-    # (backref: orcid_profile, orcid_publications, claimed_ghost_profile,
-    #  uploaded_files)
+    # (backrefs: research_questions via ResearchQuestion.user, uploaded_files)
 
 class SavedQuery(Base):
     __tablename__ = "saved_queries"
@@ -118,8 +116,8 @@ class SavedQuery(Base):
     tags = Column(FlexibleJSONB, default=list)
     is_favorite = Column(Boolean, default=False)
     vector_id = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     
     user = relationship("User", back_populates="queries")
 
@@ -130,7 +128,7 @@ class UserSettings(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     theme = Column(String(20), default="dark")
     default_paper_limit = Column(Integer, default=5)
-    llm_provider = Column(String(20), default="groq")
+    llm_provider = Column(String(20), default="nvidia")
     llm_model = Column(String(50), nullable=True)
     auto_export = Column(Boolean, default=False)
     export_format = Column(String(20), default="markdown")
@@ -147,7 +145,7 @@ class ResearchSession(Base):
     papers_count = Column(Integer, default=0)
     synthesis_length = Column(Integer, default=0)
     duration_seconds = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     
     user = relationship("User", back_populates="research_sessions")
 
@@ -163,7 +161,7 @@ class SavedPaper(Base):
     year = Column(Integer)
     citations = Column(Integer)
     abstract = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     
     user = relationship("User", back_populates="saved_papers")
     
@@ -175,8 +173,8 @@ class Note(Base):
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False, default="")
     tags = Column(FlexibleJSON, default=list)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     
     user = relationship("User", back_populates="notes")
 
@@ -187,7 +185,7 @@ class SearchHistory(Base):
     user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     query = Column(Text, nullable=False)
     results_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     
     user = relationship("User", back_populates="search_history")
 
@@ -198,7 +196,7 @@ class Connection(Base):
     follower_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     followed_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(20), default="pending") # pending, accepted, blocked
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     
     follower = relationship("User", foreign_keys=[follower_id], back_populates="following")
     followed = relationship("User", foreign_keys=[followed_id], back_populates="followers")
@@ -212,7 +210,7 @@ class Notification(Base):
     content = Column(Text, nullable=False)
     link = Column(String(255), nullable=True)
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     
     user = relationship("User", back_populates="notifications")
 
@@ -225,64 +223,7 @@ class TrialFeedback(Base):
     favorite_feature = Column(String(50), nullable=True)
     improvement_text = Column(Text, nullable=True)
     would_recommend = Column(String(10), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-# ─── ORCID Integration ────────────────────────────────────────────────────────
-
-class OrcidProfile(Base):
-    """Stores the linked ORCID ID and OAuth token for a user."""
-    __tablename__ = "orcid_profiles"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    orcid_id = Column(String(30), unique=True, index=True, nullable=False)   # e.g. "0000-0002-1825-0097"
-    access_token = Column(Text, nullable=True)    # ORCID OAuth access token
-    refresh_token = Column(Text, nullable=True)
-    token_expires_at = Column(DateTime, nullable=True)
-    last_synced_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User", backref="orcid_profile", uselist=False)
-
-class OrcidPublication(Base):
-    """Publications pulled from ORCID and synced to a user's profile."""
-    __tablename__ = "orcid_publications"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    put_code = Column(String(50), nullable=True)     # ORCID work put-code
-    title = Column(String(500), nullable=False)
-    doi = Column(String(200), nullable=True, index=True)
-    publication_year = Column(Integer, nullable=True)
-    journal = Column(String(300), nullable=True)
-    work_type = Column(String(50), nullable=True)    # journal-article, conference-paper, etc.
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User", backref="orcid_publications")
-
-# ─── Ghost Profiles ───────────────────────────────────────────────────────────
-
-class GhostProfile(Base):
-    """
-    Auto-created unclaimed profiles for co-authors discovered via ORCID syncs.
-    When the co-author signs up with their email, this profile is merged into a real User.
-    """
-    __tablename__ = "ghost_profiles"
-
-    id = Column(String(50), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
-    display_name = Column(String(200), nullable=False)
-    email = Column(String(120), nullable=True, index=True)
-    orcid_id = Column(String(30), nullable=True, index=True)
-    affiliation = Column(String(300), nullable=True)
-    # co-publication context — list of DOIs where this person appears as co-author
-    co_publication_dois = Column(FlexibleJSONB, default=list)
-    # once claimed, points to the real user
-    claimed_by_user_id = Column(String(50), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    invite_sent_at = Column(DateTime, nullable=True)
-    invite_token = Column(String(100), nullable=True, unique=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    claimed_by = relationship("User", backref="claimed_ghost_profile", foreign_keys=[claimed_by_user_id])
+    created_at = Column(DateTime, default=utcnow)
 
 # ─── File Uploads History ─────────────────────────────────────────────────────
 
@@ -295,7 +236,7 @@ class UploadedFile(Base):
     filename = Column(String(255), nullable=False)
     cid = Column(String(500), nullable=True)           # Supabase Storage path (e.g. user_id/filename.pdf)
     file_size = Column(Integer, nullable=True)          # bytes
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=utcnow)
 
     user = relationship("User", backref="uploaded_files")
 
@@ -309,8 +250,8 @@ class DeepResearchSession(Base):
     status = Column(String(50), default="pending")
     output = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="deep_research_sessions")
 
@@ -329,8 +270,8 @@ class ResearchQuestion(Base):
     question = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), default="active")  # active, paused, completed, abandoned
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     user = relationship("User", backref="research_questions")
     tasks = relationship("ResearchTask", back_populates="question", cascade="all, delete-orphan")
@@ -355,7 +296,7 @@ class ResearchTask(Base):
     agent_model = Column(String(100), nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     question = relationship("ResearchQuestion", back_populates="tasks")
     sources = relationship("Source", back_populates="task", cascade="all, delete-orphan")
@@ -381,7 +322,7 @@ class Source(Base):
     citation_count = Column(Integer, nullable=True)
     relevance_score = Column(Integer, default=0)  # 0-100
     source_metadata = Column("metadata", FlexibleJSONB, default=dict)
-    discovered_at = Column(DateTime, default=datetime.utcnow)
+    discovered_at = Column(DateTime, default=utcnow)
 
     def __init__(self, **kwargs):
         if "metadata" in kwargs and "source_metadata" not in kwargs:
@@ -406,7 +347,7 @@ class Passage(Base):
     section = Column(String(200), nullable=True)
     position = Column(Integer, default=0)
     embedding_id = Column(String(100), nullable=True)  # reference to Qdrant vector
-    extracted_at = Column(DateTime, default=datetime.utcnow)
+    extracted_at = Column(DateTime, default=utcnow)
 
     source = relationship("Source", back_populates="passages")
     evidence_items = relationship("Evidence", back_populates="passage", cascade="all, delete-orphan")
@@ -426,7 +367,7 @@ class Evidence(Base):
     confidence = Column(Integer, default=80)  # 0-100
     extracted_by = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
-    extracted_at = Column(DateTime, default=datetime.utcnow)
+    extracted_at = Column(DateTime, default=utcnow)
 
     passage = relationship("Passage", back_populates="evidence_items")
     claim = relationship("Claim", back_populates="evidence")
@@ -450,8 +391,8 @@ class Claim(Base):
     parent_claim_id = Column(String(50), ForeignKey("research_claims.id", ondelete="SET NULL"), nullable=True)
     reviewed_by_user = Column(Boolean, default=False)
     user_verdict = Column(String(20), nullable=True)  # accepted, rejected, needs_revision
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     question = relationship("ResearchQuestion", back_populates="claims")
     evidence = relationship("Evidence", back_populates="claim")
@@ -486,11 +427,38 @@ class Thesis(Base):
     version_history = Column(FlexibleJSONB, default=list)
     # Associated research question
     question_id = Column(String(50), ForeignKey("research_questions.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="theses")
     question = relationship("ResearchQuestion", backref="theses")
+
+
+class ThesisCollaborator(Base):
+    __tablename__ = "thesis_collaborators"
+    __table_args__ = (UniqueConstraint("thesis_id", "user_id", name="uq_thesis_collaborator"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    thesis_id = Column(String(50), ForeignKey("theses.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(20), nullable=False, default="editor")
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class PaymentTransaction(Base):
+    __tablename__ = "payment_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(50), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reference = Column(String(100), unique=True, nullable=False, index=True)
+    amount = Column(Integer, nullable=False)
+    currency = Column(String(10), nullable=False)
+    status = Column(String(20), nullable=False, default="initialized")
+    webhook_event = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    completed_at = Column(DateTime, nullable=True)
 
 
 # ─── Performance Indexes ─────────────────────────────────────────────────────
@@ -539,8 +507,8 @@ class AgentTeam(Base):
     team_plan = Column(FlexibleJSONB, default=dict)  # collaborative plan: goals, phases, milestones
     shared_context = Column(Text, nullable=True)  # accumulated knowledge shared across agents
     max_agents = Column(Integer, default=8)  # safety cap on agent count
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     question = relationship("ResearchQuestion", backref="agent_teams")
     agents = relationship("Agent", back_populates="team", cascade="all, delete-orphan")
@@ -583,7 +551,7 @@ class Agent(Base):
     error = Column(Text, nullable=True)
 
     # Lifecycle
-    spawned_at = Column(DateTime, default=datetime.utcnow)
+    spawned_at = Column(DateTime, default=utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     retired_at = Column(DateTime, nullable=True)
@@ -622,7 +590,7 @@ class AgentMessage(Base):
     priority = Column(Integer, default=0)  # higher = more urgent
 
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     team = relationship("AgentTeam", backref="messages")
     sender = relationship("Agent", back_populates="messages_sent", foreign_keys=[sender_agent_id])
@@ -663,7 +631,7 @@ class ResearchAuditLog(Base):
     actor = Column(String(100), nullable=True)  # user_id, agent_id, "system", "scheduler"
     # Context snapshot
     log_metadata = Column("metadata", FlexibleJSONB, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
 
 
 class AgentMemory(Base):
@@ -684,8 +652,8 @@ class AgentMemory(Base):
     # Lifecycle
     is_active = Column(Boolean, default=True)
     expires_at = Column(DateTime, nullable=True)  # optional TTL for ephemeral memories
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     agent = relationship("Agent", backref="memories")
     source_task = relationship("ResearchTask", foreign_keys=[source_task_id])
@@ -707,7 +675,7 @@ class ResearchCheckpoint(Base):
     source_count = Column(Integer, default=0)
     claim_count = Column(Integer, default=0)
     agent_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
 
     question = relationship("ResearchQuestion", backref="checkpoints")
 
@@ -782,8 +750,8 @@ class ResearchSessionState(Base):
     last_checkpoint_id = Column(String(50), ForeignKey("research_checkpoints.id", ondelete="SET NULL"), nullable=True)
     # Metadata
     session_metadata = Column("metadata", FlexibleJSONB, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     question = relationship("ResearchQuestion", backref="session_state")
 
@@ -801,7 +769,7 @@ class TaskExecutionLog(Base):
     # WAL status
     status = Column(String(20), default="planned")  # planned, executing, completed, failed, orphaned
     # Timing
-    planned_at = Column(DateTime, default=datetime.utcnow)
+    planned_at = Column(DateTime, default=utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     # Results
@@ -848,7 +816,7 @@ class QueryEmbedding(Base):
     text = Column(Text, nullable=False)
     query_metadata = Column("metadata", FlexibleJSONB, default=dict)
     embedding = Column(VectorType, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class PaperEmbedding(Base):
@@ -864,5 +832,5 @@ class PaperEmbedding(Base):
     year = Column(Integer, nullable=True)
     citations = Column(Integer, default=0)
     embedding = Column(VectorType, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 

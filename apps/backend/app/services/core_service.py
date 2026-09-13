@@ -32,16 +32,9 @@ class COREService(BaseExternalClient):
             cache_ttl=3600,
             api_key=settings.CORE_API_KEY,
             rate_limit_per_minute=10,  # Free tier rate limit
+            client=client,  # inject the shared app-level httpx client when available
         )
-        self._shared_client = client
-    
-    @property
-    def client(self) -> httpx.AsyncClient:
-        """Use shared client if provided, otherwise use base client."""
-        if self._shared_client:
-            return self._shared_client
-        return super().client
-    
+
     def _build_headers(self, additional_headers: Optional[Dict] = None) -> Dict[str, str]:
         """Build headers with CORE-specific requirements."""
         headers = super()._build_headers(additional_headers)

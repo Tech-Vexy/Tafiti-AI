@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from app.core.timeutil import utcnow
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from app.db.session import get_db
@@ -6,7 +7,6 @@ from app.models.schemas import NoteCreate, NoteUpdate, NoteResponse
 from app.models.database import Note
 from app.core.security import get_current_user
 from sqlalchemy.future import select
-from datetime import datetime, timezone
 from app.core.logger import get_logger
 
 logger = get_logger("notes_api")
@@ -71,7 +71,7 @@ async def update_note(
     for field, value in update_data.items():
         setattr(note, field, value)
     
-    note.updated_at = datetime.now(timezone.utc)
+    note.updated_at = utcnow()
     await db.commit()
     await db.refresh(note)
     return note

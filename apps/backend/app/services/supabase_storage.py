@@ -69,7 +69,7 @@ async def upload_file(
                 if "already exists" not in str(bucket_err).lower():
                     logger.warning(f"Bucket creation issue: {bucket_err}")
 
-        result = client.storage.from_(bucket).upload(
+        client.storage.from_(bucket).upload(
             path=path,
             file=file_content,
             file_options={"content-type": content_type, "upsert": "false"},

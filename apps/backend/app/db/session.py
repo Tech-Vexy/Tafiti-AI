@@ -23,8 +23,8 @@ if not _is_sqlite:
         connect_args["ssl"] = ctx
 
     _engine_kwargs.update(
-        pool_size=10,
-        max_overflow=20,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
         connect_args=connect_args,
     )
 

@@ -10,7 +10,9 @@ Usage in router:
         _: dict = Depends(require_trial_or_active),
     ):
 """
-from datetime import datetime, timezone
+from datetime import timedelta
+
+from app.core.timeutil import utcnow
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -42,7 +44,20 @@ async def require_trial_or_active(
     user = result.scalar_one_or_none()
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        now = utcnow()
+        user = User(
+            id=current_user["user_id"],
+            username=current_user.get("username") or current_user.get("email") or f"Researcher_{current_user['user_id'][:8]}",
+            email=current_user.get("email"),
+            created_at=now,
+            subscription_status="trialing",
+            trial_ends_at=now + timedelta(days=7),
+            is_superuser=False,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return current_user
 
     # ── Admin bypass ──────────────────────────────────────────────────────────
     if user.is_superuser:
@@ -57,13 +72,13 @@ async def require_trial_or_active(
     if (
         user.subscription_status == "trialing"
         and user.trial_ends_at is not None
-        and user.trial_ends_at > datetime.now(timezone.utc)
+        and user.trial_ends_at > utcnow()
     ):
         return current_user
 
     # ── Trial expired ─────────────────────────────────────────────────────────
     if user.subscription_status == "trialing" and (
-        user.trial_ends_at is None or user.trial_ends_at <= datetime.now(timezone.utc)
+        user.trial_ends_at is None or user.trial_ends_at <= utcnow()
     ):
         logger.info(f"Trial expired for user {user.id} — blocking premium feature")
         raise HTTPException(

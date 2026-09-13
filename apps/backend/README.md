@@ -1,251 +1,164 @@
 # Tafiti AI Backend API
 
-Modern, modular FastAPI backend with vector database and agent framework.
+FastAPI backend for Tafiti AI — academic research, deep research, collaboration, billing, and discovery.
+
+## Stack
+
+- **API**: FastAPI (async) + Uvicorn/Gunicorn, auto OpenAPI docs
+- **Auth**: Clerk-issued JWTs verified against the Clerk JWKS endpoint (no Clerk secret keys or SDK required)
+- **Database**: PostgreSQL 14+ / Supabase / Neon with SQLAlchemy 2.0 async + pgvector
+- **Cache / Queue**: Redis (Upstash) for caching, rate-limit state, and Celery broker
+- **LLMs**: Gemini (Deep Research agent via Interactions API), Nvidia NIM, OpenRouter (Pydantic AI drafter/critic)
+- **Agents**: agno agent framework (`deep_research_agent`), Pydantic AI model routing
+- **Observability**: Prometheus `/metrics` + OpenTelemetry OTLP (both opt-in)
+- **Storage**: Supabase Storage (PDF papers, thesis artifacts)
+- **Payments**: Paystack (KES billing)
 
 ## Architecture
 
 ```
 backend/
 ├── app/
-│   ├── api/              # API routes
-│   │   ├── auth.py      # Authentication endpoints
-│   │   ├── research.py  # Research & synthesis
-│   │   └── queries.py   # Saved queries
-│   ├── agents/          # LangChain agents
-│   │   └── research_agent.py
-│   ├── core/            # Core functionality
-│   │   ├── config.py    # Configuration
-│   │   └── security.py  # JWT & passwords
-│   ├── db/              # Database
-│   │   └── session.py   # SQLAlchemy async
-│   ├── models/          # Data models
-│   │   ├── database.py  # SQLAlchemy models
-│   │   └── schemas.py   # Pydantic schemas
-│   └── services/        # Business logic
-│       ├── openalex_service.py
-│       └── vector_service.py
-└── main.py              # FastAPI application
+│   ├── api/                # Route modules (auth, research, teams, collaboration, billing, ...)
+│   ├── agents/             # agno agents (deep research, ...)
+│   ├── core/               # config, security, cache, rate_limit, model_router, celery, tracing
+│   ├── db/                 # SQLAlchemy async engine/session, migrations, seed
+│   ├── models/             # SQLAlchemy models + Pydantic schemas
+│   ├── services/           # external APIs, vector store, research engine, agent execution
+│   └── workers/            # Celery tasks
+├── alembic/                # Database migrations
+├── tests/                  # async pytest suite (SQLite in-memory + mocked vector store)
+└── main.py                 # FastAPI application entrypoint
 ```
 
 ## Features
 
-- ⚡ **FastAPI**: Modern, fast, async API framework
-- 🔐 **JWT Authentication**: Secure token-based auth
-- 🗄️ **PostgreSQL + SQLAlchemy**: Async database operations
-- 🧠 **LangChain**: Agent framework for LLM operations
-- 📊 **ChromaDB**: Vector database for semantic search
-- 🔍 **OpenAlex Integration**: Academic paper search
-- 📡 **Streaming**: Server-sent events for real-time synthesis
-- 📚 **Auto Documentation**: Swagger UI + ReDoc
+- Clerk JWT verification (JWKS cached with async lock, issuer/audience validated)
+- Adaptive in-memory/Redis rate limiting with per-token buckets (`X-RateLimit-*` headers)
+- pgvector semantic search over saved queries and research artifacts
+- Popular/academic paper search (OpenAlex, CORE, Elsevier/Scopus, Springer, arXiv)
+- Gemini Deep Research agent + agno agent pipeline with checkpoints and state machine
+- Collaboration: teams, shared queries, live canvas (WebSocket), ghost profiles, social discovery
+- Deep-research answer caching keyed by user to prevent cross-tenant leaks
+- Trial billing + Paystack subscriptions
+- Liveness/readiness/health endpoints with external dependency probing
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.10+
-- PostgreSQL 14+
-- Redis (optional, for caching)
+- Python 3.12+
+- PostgreSQL 14+ (with `pgvector` for vector features)
+- Redis (or Upstash Redis)
 
 ### Setup
 
-1. **Create virtual environment**:
 ```bash
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1          # Windows
+# source .venv/bin/activate           # Linux/macOS
 
-2. **Install dependencies**:
-```bash
 pip install -r requirements.txt
 ```
 
-3. **Configure environment**:
+Runtime dependencies only. Install dev/test extras with `requirements-dev.txt`.
+
+### Environment
+
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# Fill in at minimum: DATABASE_URL, REDIS_URL, CLERK_DOMAIN, a GEMINI_API_KEY
 ```
 
-4. **Initialize database**:
+### Database
+
 ```bash
-# Create PostgreSQL database
-psql -U postgres
-CREATE DATABASE research_db;
-\q
+# Apply migrations
+alembic upgrade head
+
+# Or, outside production, let the app auto-run init_db on startup
+uvicorn main:app --reload
 ```
 
-5. **Run migrations** (auto-creates tables on startup)
+On startup the app runs pending Alembic migrations. In production a failed
+migration aborts startup; outside production it falls back to `init_db()`
+for local development.
 
 ## Usage
 
-### Development Server
+### Development
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Production Server
+### Production
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-### With Gunicorn
+### Celery workers
 
 ```bash
-gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+celery -A app.core.celery_app worker --loglevel=info --concurrency=4
 ```
+
+## Health & Observability
+
+- `GET /health/live` — liveness (always 200 when process is up)
+- `GET /ready` — readiness (DB + cache ping)
+- `GET /health` — detailed status incl. external services with 120s probe cache
+- `GET /metrics` — Prometheus metrics when `ENABLE_PROMETHEUS=true`
+- OpenTelemetry traces when `OTEL_EXPORTER_OTLP_ENDPOINT` is set
 
 ## API Documentation
 
-Once running, access:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
-
-## API Endpoints
-
-### Authentication
-
-```http
-POST   /api/v1/auth/register    # Register new user
-POST   /api/v1/auth/login        # Login
-GET    /api/v1/auth/me           # Get current user
-PUT    /api/v1/auth/me           # Update user
-GET    /api/v1/auth/settings     # Get user settings
-PUT    /api/v1/auth/settings     # Update settings
-```
-
-### Research
-
-```http
-POST   /api/v1/research/search           # Search papers
-POST   /api/v1/research/synthesize       # Generate synthesis
-POST   /api/v1/research/synthesize/stream # Streaming synthesis
-GET    /api/v1/research/papers/{id}      # Get paper details
-GET    /api/v1/research/papers/{id}/related # Related papers
-```
-
-### Saved Queries
-
-```http
-POST   /api/v1/queries/              # Create saved query
-GET    /api/v1/queries/              # List saved queries
-GET    /api/v1/queries/{id}          # Get query
-PUT    /api/v1/queries/{id}          # Update query
-DELETE /api/v1/queries/{id}          # Delete query
-POST   /api/v1/queries/{id}/favorite # Toggle favorite
-POST   /api/v1/queries/search        # Vector search
-GET    /api/v1/queries/favorites/list # Get favorites
-```
-
-## Vector Database
-
-ChromaDB is used for semantic search:
-
-- **Embeddings**: sentence-transformers/all-MiniLM-L6-v2
-- **Similarity**: Cosine distance
-- **Features**: 
-  - Semantic search across saved queries
-  - Find similar research topics
-  - Auto-suggest related queries
-
-## Agent Framework
-
-LangChain agents handle:
-
-1. **Research Synthesis**: Combines papers into coherent answer
-2. **Citation Management**: Proper inline citations [Source N]
-3. **Key Concept Extraction**: Identifies main topics
-4. **Follow-up Suggestions**: Recommends next research questions
-
-## Configuration
-
-Key settings in `.env`:
-
-```ini
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost/research_db
-
-# LLM
-GROQ_API_KEY=gsk_your_key_here
-DEFAULT_LLM_PROVIDER=groq
-DEFAULT_LLM_MODEL=llama3-70b-8192
-
-# Vector DB
-CHROMA_PERSIST_DIR=./chroma_db
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-
-# Security
-SECRET_KEY=your-secret-key
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
 
 ## Testing
 
 ```bash
+# From apps/backend
 pytest tests/ -v
 pytest tests/ --cov=app
 ```
 
+Tests run against an in-memory SQLite database with the vector store mocked
+(`conftest.py` stubs `app.services.vector_service`) and use `ASGITransport`
+(no lifespan) so they do not touch Redis or external APIs. Lint with:
 
-## Performance
+```bash
+ruff check .
+```
 
-- **Async operations**: Non-blocking I/O
-- **Connection pooling**: Database efficiency
-- **Redis caching**: Fast repeated queries
-- **Streaming**: Real-time user feedback
-- **Vector search**: Sub-second semantic queries
+## Configuration
+
+Key settings (see `.env.example` and `app/core/config.py` for the full list):
+
+```ini
+DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/postgres?ssl=require
+REDIS_URL=rediss://default:token@your-endpoint.upstash.io:6379
+CLERK_DOMAIN=your-clerk-instance.clerk.accounts.dev
+GEMINI_API_KEY=your_key
+DEFAULT_LLM_PROVIDER=gemini
+SECRET_KEY=<opaque 32+ char value; required and validated in production>
+FRONTEND_URL=https://app.tafitiai.co.ke
+```
+
+Production startup fails fast with a clear error when `SECRET_KEY`,
+`DATABASE_URL`, `OPENALEX_EMAIL`, `CLERK_DOMAIN`, or `GEMINI_API_KEY` are
+missing or still at their dev defaults.
 
 ## Security
 
-- JWT token authentication
-- Password hashing (bcrypt)
-- CORS configuration
-- Rate limiting
-- SQL injection prevention (SQLAlchemy)
-- XSS protection
-
-## Monitoring
-
-Health check endpoint:
-```http
-GET /health
-```
-
-Response:
-```json
-{
-    "status": "healthy",
-    "version": "2.0.0",
-    "timestamp": 1708012345.67
-}
-```
-
-## Troubleshooting
-
-**Database connection error**:
-```bash
-# Check PostgreSQL is running
-sudo systemctl status postgresql
-
-# Test connection
-psql -U postgres -d research_db
-```
-
-**Vector database error**:
-```bash
-# Clear and reinitialize
-rm -rf chroma_db/
-# Restart application
-```
-
-**LLM errors**:
-```bash
-# Verify API keys
-echo $GROQ_API_KEY
-
-# Test connectivity
-curl -H "Authorization: Bearer $GROQ_API_KEY" https://api.groq.com/...
-```
+- Clerk JWT verification against live JWKS (no hardcoded fallback issuer)
+- HMAC-signed deep-research cache keys scoped per user
+- Rate limiting per authenticated token (localhost exempt only outside production)
+- SQLAlchemy parameterized queries; CORS allow-list in `ALLOWED_ORIGINS`
+- `SECRET_KEY` validated at startup in production
+- Optional `CLERK_AUDIENCE` / `CLERK_ISSUER` / `CLERK_JWKS_URL` overrides
 
 ## License
 

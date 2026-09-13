@@ -30,8 +30,8 @@ async def test_get_testimonials(client: AsyncClient, seeded_user):
     # Submit feedback with high rating and text
     await client.post("/api/v1/feedback/trial", json={
         "rating": 5,
-        "improvement_text": "Amazing platform for African researchers. Love the ORCID integration!",
-        "favorite_feature": "ORCID sync",
+        "improvement_text": "Amazing platform for African researchers. Love the Deep Research synthesis!",
+        "favorite_feature": "Deep Research",
     })
 
     resp = await client.get("/api/v1/feedback/testimonials")

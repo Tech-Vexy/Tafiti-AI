@@ -57,7 +57,6 @@ async def upload_research_pdf(
 
         # 1. Extract Text and Summarize using Gemini API
         text = ""
-        summary = ""
         try:
             if settings.GOOGLE_API_KEY:
                 client = genai.Client(api_key=settings.GOOGLE_API_KEY, http_options={'api_version': 'v1alpha'})
@@ -82,13 +81,9 @@ async def upload_research_pdf(
                         raise Exception("Gemini file processing failed")
 
                     try:
-                        # As requested by the user, we should use gemini-3.5-flash as it is the latest flash series model.
-                        # Wait for processing if necessary (we did it above but the actual model call is here)
-
-                        # Note: We must use the Interactions API for document processing as per the new beta docs
-                        # for model gemini-3.5-flash. The API expects an 'interactions.create' not 'models.generate_content'.
+                        # Use gemini-3.8-flash model
                         interaction = await client.aio.interactions.create(
-                            model="gemini-3.5-flash",
+                            model="gemini-3.8-flash",
                             input=[
                                 {"type": "document", "uri": uploaded_file.uri, "mime_type": uploaded_file.mime_type},
                                 {"type": "text", "text": "Extract the full text and summarize this document. Please provide the summary first, followed by the extracted text."}
@@ -122,7 +117,7 @@ async def upload_research_pdf(
                         if not text:
                             text = pypdf_text
                     except Exception as e:
-                        pass
+                        logger.warning(f"pypdf fallback text extraction failed: {e}")
                 finally:
                     os.unlink(tmp_path)
             else:
@@ -147,6 +142,8 @@ async def upload_research_pdf(
             filename=file.filename,
             user_id=current_user["user_id"],
         )
+        if not storage_path:
+            raise HTTPException(status_code=503, detail="File storage is temporarily unavailable")
 
         # 3. Record in DB
         record = UploadedFile(
@@ -157,6 +154,25 @@ async def upload_research_pdf(
         )
         db.add(record)
         await db.commit()
+
+        # 4. Index document in user's persistent Gemini File Search Store for Deep Research grounding
+        if settings.gemini_api_key or settings.GOOGLE_API_KEY:
+            try:
+                from app.services.gemini_file_store import get_gemini_file_store_service
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as store_tmp:
+                    store_tmp.write(content)
+                    store_tmp_path = store_tmp.name
+                try:
+                    await get_gemini_file_store_service().upload_document_to_store(
+                        user_id=current_user["user_id"],
+                        file_path=store_tmp_path,
+                        display_name=file.filename or "uploaded_paper.pdf",
+                    )
+                finally:
+                    if os.path.exists(store_tmp_path):
+                        os.unlink(store_tmp_path)
+            except Exception as store_err:
+                logger.warning(f"Failed to index PDF in Gemini File Search Store: {store_err}")
 
         return {
             "filename": file.filename,

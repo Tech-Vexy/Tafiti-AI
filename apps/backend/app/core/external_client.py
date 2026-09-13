@@ -7,8 +7,7 @@ OpenAlex, Semantic Scholar, CORE, Elsevier, DOAJ, AJOL, AfricArXiv.
 
 import httpx
 import asyncio
-from typing import Optional, Dict, Any, Callable, TypeVar, Generic
-from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, Callable, TypeVar
 from functools import wraps
 import time
 
@@ -75,7 +74,7 @@ def retry_on_failure(
                     else:
                         logger.error(f"Max retries ({max_retries}) exceeded for {func.__name__}")
                         raise
-                except Exception as e:
+                except Exception:
                     # Don't retry non-retryable exceptions
                     raise
             
@@ -98,6 +97,7 @@ class BaseExternalClient:
         cache_ttl: int = 3600,
         api_key: Optional[str] = None,
         rate_limit_per_minute: Optional[int] = None,
+        client: Optional[httpx.AsyncClient] = None,
     ):
         self.base_url = base_url.rstrip('/')
         self.service_name = service_name
@@ -106,21 +106,30 @@ class BaseExternalClient:
         self.cache_ttl = cache_ttl
         self.api_key = api_key
         self.rate_limit_per_minute = rate_limit_per_minute
-        
+
+        # A shared client can be injected (e.g. app.state.http_client).
+        self._injected_client = client
         self._client: Optional[httpx.AsyncClient] = None
         self._rate_limit_tracker: Dict[str, list] = {}
         
         logger.info(f"Initialized {service_name} client with base_url={base_url}")
     
     @property
+    def is_configured(self) -> bool:
+        """Return True if API key or necessary authentication is configured."""
+        return bool(self.api_key)
+
+    @property
     def client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client."""
+        """Get or create HTTP client (prefers the injected shared client)."""
+        if self._injected_client is not None:
+            return self._injected_client
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
     
     async def close(self):
-        """Close the HTTP client."""
+        """Close the HTTP client (only closes one owned by this instance)."""
         if self._client:
             await self._client.aclose()
             self._client = None

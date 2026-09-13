@@ -1,15 +1,15 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any
 from datetime import datetime
 
 
 # User Schemas
 class UserBase(BaseModel):
     username: Optional[str] = Field(None, max_length=80)
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     bio: Optional[str] = None
     university: Optional[str] = None
-    expertise_areas: List[str] = []
+    expertise_areas: Optional[List[str]] = Field(default_factory=list)
     career_field: Optional[str] = None
 
 
@@ -83,7 +83,7 @@ class PaperImpactResponse(BaseModel):
     relevance_score: int # 1-10
     impact_summary: str
     key_takeaway: str
-    potential_applications: List[str]
+    potential_applications: List[str] = Field(default_factory=list)
 
 
 class UserDiscoveryResponse(BaseModel):
@@ -212,8 +212,8 @@ class SynthesisResponse(BaseModel):
 class SavedQueryBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     query: str
-    papers: List[PaperBase]
-    answer: str
+    papers: List[Any] = []
+    answer: Optional[str] = ""
     tags: List[str] = []
 
 
@@ -223,6 +223,9 @@ class SavedQueryCreate(SavedQueryBase):
 
 class SavedQueryUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
+    query: Optional[str] = None
+    answer: Optional[str] = None
+    papers: Optional[List[Any]] = None
     tags: Optional[List[str]] = None
     is_favorite: Optional[bool] = None
 
@@ -241,7 +244,7 @@ class SavedQueryResponse(SavedQueryBase):
 class UserSettingsBase(BaseModel):
     theme: str = "dark"
     default_paper_limit: int = Field(default=10, ge=1, le=50)
-    llm_provider: str = "groq"
+    llm_provider: str = "nvidia"
     llm_model: Optional[str] = None
     auto_export: bool = False
     export_format: str = "markdown"
@@ -355,12 +358,14 @@ class GapAnalysisResponse(BaseModel):
 
 # Deep Research Schemas
 class DeepResearchRequest(BaseModel):
-    query: str
-    engine: str = "gemini"  # "gemini", "gemini-max", or "parallel"
-    mcp_servers: Optional[List[str]] = None  # e.g., ["http://localhost:8000/mcp"]
+    query: str = Field(min_length=1, max_length=10000)
+    engine: str = Field(default="gemini", pattern=r"^(gemini|gemini-max|parallel)$")
+    mcp_servers: Optional[List[str]] = Field(default=None, max_length=5)  # e.g., ["http://localhost:8000/mcp"]
     thinking_summaries: Optional[str] = None  # "auto" or "none"
     visualization: Optional[str] = None  # "auto" or "off"
     collaborative_planning: Optional[bool] = None
+    file_search_store_names: Optional[List[str]] = Field(default=None, max_length=5)
+    use_user_store: bool = True
 
 class DeepResearchResponse(BaseModel):
     interaction_id: str

@@ -17,13 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.database import (
-    AgentTeam, Agent, AgentMessage, ResearchQuestion,
+    AgentTeam, Agent, ResearchQuestion,
 )
 from app.models.schemas import (
-    TeamCreate, TeamResponse, TeamDetailResponse, TeamPlanUpdate,
-    AgentSpawnRequest, AgentResponse, AgentMessageCreate, AgentMessageResponse,
-    CollaborativePlanRequest, CollaborativePlanResponse,
-    SpawnSubagentRequest,
+    TeamCreate, TeamDetailResponse, TeamPlanUpdate,
+    AgentSpawnRequest, AgentResponse, AgentMessageCreate, CollaborativePlanRequest, SpawnSubagentRequest,
 )
 
 router = APIRouter()

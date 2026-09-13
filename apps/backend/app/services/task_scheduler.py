@@ -10,15 +10,14 @@ Tasks have a `depends_on` field (list of task IDs). This service:
 4. Provides the ready queue for background execution
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from app.core.timeutil import utcnow
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
 from app.models.database import (
-    ResearchTaskSchedule, ResearchTask, ResearchQuestion,
+    ResearchTaskSchedule, ResearchTask,
 )
 
 logger = get_logger("task_scheduler")
@@ -66,7 +65,7 @@ class TaskScheduler:
                 blocked_by=[],
                 retry_count=0,
                 max_retries=3,
-                scheduled_at=datetime.now(timezone.utc) if is_ready else None,
+                scheduled_at=utcnow() if is_ready else None,
                 timeout_seconds=300,
             )
             db.add(schedule)
@@ -95,7 +94,7 @@ class TaskScheduler:
             .join(ResearchTask, ResearchTaskSchedule.task_id == ResearchTask.id)
             .where(
                 ResearchTaskSchedule.question_id == question_id,
-                ResearchTaskSchedule.is_ready == True,
+                ResearchTaskSchedule.is_ready,
                 ResearchTask.status.in_(["pending"]),
             )
             .order_by(ResearchTaskSchedule.scheduled_at)
@@ -132,7 +131,7 @@ class TaskScheduler:
             return {"unblocked": []}
 
         schedule.is_ready = False
-        schedule.completed_at = datetime.now(timezone.utc)
+        schedule.completed_at = utcnow()
 
         # Find all schedules where this task is a dependency
         question_id = schedule.question_id
@@ -164,7 +163,7 @@ class TaskScheduler:
                     if not remaining:
                         # All dependencies satisfied — unblock
                         other.is_ready = True
-                        other.scheduled_at = datetime.now(timezone.utc)
+                        other.scheduled_at = utcnow()
                         other.blocked_by = []
                         newly_unblocked.append({
                             "task_id": other.task_id,
@@ -207,7 +206,7 @@ class TaskScheduler:
                 task.completed_at = None
 
             schedule.is_ready = True
-            schedule.scheduled_at = datetime.now(timezone.utc)
+            schedule.scheduled_at = utcnow()
 
             await db.commit()
             logger.info(
@@ -256,7 +255,7 @@ class TaskScheduler:
         )
         if schedule:
             schedule.is_ready = False
-            schedule.started_at = datetime.now(timezone.utc)
+            schedule.started_at = utcnow()
             await db.commit()
 
     async def get_session_status(self, question_id, db):

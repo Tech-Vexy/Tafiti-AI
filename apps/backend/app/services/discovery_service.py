@@ -2,7 +2,6 @@ import asyncio
 from typing import List, Optional
 from datetime import datetime
 from app.services.openalex_service import get_openalex_service
-from app.services.semantic_scholar_service import get_semantic_scholar_service
 from app.models.schemas import PaperBase, UserDiscoveryResponse
 from app.models.database import User, SearchHistory
 from app.core.logger import get_logger
@@ -14,7 +13,6 @@ logger = get_logger("discovery")
 class DiscoveryService:
     def __init__(self):
         self.openalex = get_openalex_service()
-        self.s2 = get_semantic_scholar_service()
 
     async def find_similar_users(
         self,
@@ -31,7 +29,7 @@ class DiscoveryService:
 
         try:
             # Query all active users except the current one
-            query = select(User).where(User.id != current_user_id, User.is_active == True)
+            query = select(User).where(User.id != current_user_id, User.is_active)
             result = await db.execute(query)
             all_users = result.scalars().all()
 

@@ -7,7 +7,7 @@ Inspired by Rayyan.ai and SWIFT-Review.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from enum import Enum
 
 from app.core.config import settings
@@ -282,7 +282,7 @@ async def screen_single_paper(
         f"Paper Title: {payload.paper_title}\n"
         f"Abstract: {payload.paper_abstract}\n\n"
         f"Inclusion Criteria:\n" + "\n".join(f"- {c}" for c in payload.inclusion_criteria) + "\n\n"
-        f"Exclusion Criteria:\n" + "\n".join(f"- {c}" for c in payload.exclusion_criteria)
+        "Exclusion Criteria:\n" + "\n".join(f"- {c}" for c in payload.exclusion_criteria)
     )
 
     try:
@@ -330,10 +330,8 @@ async def generate_prisma_flow(
     Generates a PRISMA 2020 flow diagram data structure from provided counts.
     """
     after_dupes = payload.total_identified - payload.duplicates_removed
-    after_title_screen = after_dupes - payload.title_screened
     reasons = payload.excluded_with_reasons or {}
     total_excluded = sum(reasons.values())
-    after_full_text = payload.full_text_assessed - total_excluded
 
     flow = {
         "identification": {

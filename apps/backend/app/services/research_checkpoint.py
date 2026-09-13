@@ -11,8 +11,7 @@ Captures:
 - Audit trail summary
 """
 
-import json
-from datetime import datetime, timezone
+from app.core.timeutil import utcnow
 from typing import Optional
 
 from sqlalchemy import select, desc, func
@@ -22,7 +21,7 @@ from app.core.logger import get_logger
 from app.models.database import (
     ResearchCheckpoint, ResearchQuestion, ResearchTask,
     Source, Passage, Evidence, Claim,
-    AgentTeam, Agent, AgentMessage, AgentMemory,
+    AgentTeam, Agent, AgentMemory,
 )
 
 logger = get_logger("checkpoint")
@@ -133,7 +132,7 @@ class ResearchCheckpointService:
                     await db.execute(
                         select(AgentMemory).where(
                             AgentMemory.agent_id.in_(agent_ids),
-                            AgentMemory.is_active == True,
+                            AgentMemory.is_active,
                         )
                     )
                 ).scalars().all()
@@ -200,7 +199,7 @@ class ResearchCheckpointService:
             source_count=len(sources),
             claim_count=len(claims),
             agent_count=len(agents_data),
-            created_at=datetime.now(timezone.utc),
+            created_at=utcnow(),
         )
         db.add(cp)
         await db.commit()

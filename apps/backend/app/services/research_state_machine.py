@@ -10,7 +10,7 @@ Every state change goes through this service, which:
 4. Returns the result
 """
 
-from datetime import datetime, timezone
+from app.core.timeutil import utcnow
 from typing import Optional
 
 from sqlalchemy import select, desc
@@ -136,7 +136,7 @@ class ResearchStateMachine:
         entity.status = to_status
 
         # Update timestamp fields based on entity type
-        now = datetime.now(timezone.utc)
+        now = utcnow()
         if entity_type == "team" and to_status == "active":
             entity.updated_at = now
         elif entity_type == "team" and to_status in ("completed", "disbanded"):
@@ -264,7 +264,7 @@ class ResearchStateMachine:
             from_status=from_status, to_status=to_status,
             reason=reason, actor=actor,
             log_metadata=metadata or {},
-            created_at=datetime.now(timezone.utc),
+            created_at=utcnow(),
         )
         db.add(entry)
 

@@ -6,18 +6,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const staticRoutes = [
     '',
-    '/chat',
-    '/discover',
-    '/library',
-    '/gap-analysis',
-    '/workspace',
-    '/thesis',
-    '/research-review',
-    '/notes',
+    '/research',
     '/history',
     '/billing',
     '/profile',
-    '/support',
   ];
 
   return staticRoutes.map((route) => ({

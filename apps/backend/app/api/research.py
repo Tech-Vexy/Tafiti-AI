@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import asyncio
+import hashlib
 import json
+import uuid
 
 from app.db.session import get_db
+from app.db.session import AsyncSessionLocal
 from app.models.schemas import (
     SynthesisRequest, SynthesisResponse,
     PaperSearchRequest, PaperSearchResponse, PaperBase, SpringerSearchRequest,
@@ -15,13 +19,8 @@ from app.models.schemas import (
 )
 from app.models.schemas_chat import ChatResearchRequest
 from app.services.openalex_service import get_openalex_service
-from app.services.semantic_scholar_service import get_semantic_scholar_service
-from app.services.openalex_service import get_arxiv_service
 from app.services.core_service import get_core_service
 from app.services.elsevier_service import get_elsevier_service
-from app.services.doaj_service import get_doaj_service
-from app.services.ajol_service import get_ajol_service
-from app.services.africarxiv_service import get_africarxiv_service
 from app.services.springer_service import get_springer_service
 from app.services.parallel_service import get_parallel_service
 from app.models.schemas import (
@@ -29,19 +28,28 @@ from app.models.schemas import (
     ParallelTaskCreateRequest, ParallelTaskResultResponse, ParallelTaskBasis,
     ParallelExtractRequest, ParallelExtractResponse,
 )
-from app.agents.research_agent import get_research_agent
 from app.models.schemas import DeepResearchRequest, DeepResearchResponse, DeepResearchStatusResponse
 from app.agents.deep_research_agent import get_deep_research_agent
-from app.models.schemas import DeepResearchValidationResponse
-from app.agents.validation_agent import get_validation_agent
-
-from app.agents.critic_agent import validated_synthesis, ValidatedSynthesis
+from app.services.synthesis_service import (
+    synthesize_literature,
+    stream_synthesis,
+    stream_collaborative_synthesis,
+    explain_paper_impact as evaluate_paper_impact,
+    analyze_research_gaps,
+    generate_followup_questions,
+    build_paper_context,
+)
 from app.services.vector_service import vector_store
 from app.core.security import get_current_user
 from app.core.subscription import require_trial_or_active
-from app.models.database import ResearchSession, SearchHistory
+from app.core.cache import cache
+from app.models.database import ResearchSession, SearchHistory, DeepResearchSession
 import time
 from app.core.logger import get_logger
+from app.services.academic_query_processor import (
+    deconstruct_academic_query,
+    filter_and_rank_papers,
+)
 
 logger = get_logger("research_api")
 router = APIRouter()
@@ -57,60 +65,55 @@ async def search_papers(
     http = request.app.state.http_client
     per_source = max(5, search_request.limit // 2)
 
-    # Instantiate all source services
-    openalex    = get_openalex_service(client=http)
-    s2          = get_semantic_scholar_service(client=http)
-    arxiv       = get_arxiv_service(client=http)
-    core        = get_core_service(client=http)
-    elsevier    = get_elsevier_service(client=http)
-    doaj        = get_doaj_service(client=http)
-    ajol        = get_ajol_service(client=http)
-    africarxiv  = get_africarxiv_service(client=http)
-    springer    = get_springer_service(client=http)
-    parallel    = get_parallel_service()
+    # Deconstruct conversational query into targeted academic search terms
+    decon = deconstruct_academic_query(search_request.query)
+    clean_topic = decon.topic
+    academic_query = decon.search_query
 
-    # Fan-out: all sources run fully in parallel
-    gather_tasks = [
-        openalex.search_papers(
-            query=search_request.query,
-            limit=search_request.limit,
-            filters=search_request.filters,
-        ),
-        s2.search_papers(query=search_request.query, limit=per_source),
-        arxiv.search_papers(query=search_request.query, limit=per_source),
-        core.search_papers(query=search_request.query, limit=per_source),
-        elsevier.search_papers(query=search_request.query, limit=per_source),
-        doaj.search_papers(query=search_request.query, limit=per_source),
-        ajol.search_papers(query=search_request.query, limit=per_source),
-        africarxiv.search_papers(query=search_request.query, limit=per_source),
-        springer.search_papers(query=search_request.query, limit=per_source),
-    ]
+    # Dynamically dispatch only to configured sources in .env
+    gather_tasks = []
+    task_labels = []
+
+    # 1. OpenAlex (always active global corpus)
+    openalex = get_openalex_service(client=http)
+    gather_tasks.append(openalex.search_papers(
+        query=academic_query,
+        limit=search_request.limit,
+        filters=search_request.filters,
+    ))
+    task_labels.append("openalex")
+
+    # 2. CORE (if API key configured)
+    core = get_core_service(client=http)
+    if core.is_configured:
+        gather_tasks.append(core.search_papers(query=academic_query, limit=per_source))
+        task_labels.append("core")
+
+    # 3. Elsevier / Scopus (if API key configured)
+    elsevier = get_elsevier_service(client=http)
+    if elsevier.is_configured:
+        gather_tasks.append(elsevier.search_papers(query=academic_query, limit=per_source))
+        task_labels.append("elsevier")
+
+    # 4. Springer Nature Meta + OpenAccess (if API key configured)
+    springer = get_springer_service(client=http)
+    if springer.is_configured:
+        gather_tasks.append(springer.search_papers(query=academic_query, limit=per_source))
+        task_labels.append("springer")
+
+    # 5. Parallel API (if API key configured)
+    parallel = get_parallel_service()
     if parallel.is_configured:
-        gather_tasks.append(parallel.search_papers(query=search_request.query, limit=per_source))
+        gather_tasks.append(parallel.search_papers(query=academic_query, limit=per_source))
+        task_labels.append("parallel")
 
     gather_results = await asyncio.gather(*gather_tasks, return_exceptions=True)
 
-    oa_results = gather_results[0]
-    batch_map = [
-        ("s2", gather_results[1]),
-        ("arxiv", gather_results[2]),
-        ("core", gather_results[3]),
-        ("elsevier", gather_results[4]),
-        ("doaj", gather_results[5]),
-        ("ajol", gather_results[6]),
-        ("africarxiv", gather_results[7]),
-        ("springer", gather_results[8]),
-    ]
-    if parallel.is_configured and len(gather_results) > 9:
-        batch_map.append(("parallel", gather_results[9]))
+    papers: list = []
+    seen_ids = set()
+    source_counts: dict = {}
 
-    # Merge: OpenAlex first (highest quality metadata), then deduplicate by ID
-    papers: list = oa_results if isinstance(oa_results, list) else []
-    seen_ids = {p.id for p in papers}
-    source_counts: dict = {
-        "openalex": len(oa_results) if isinstance(oa_results, list) else 0,
-    }
-    for label, batch in batch_map:
+    for label, batch in zip(task_labels, gather_results):
         count = 0
         if isinstance(batch, list):
             for p in batch:
@@ -122,9 +125,12 @@ async def search_papers(
             logger.warning(f"{label} source error: {batch}")
         source_counts[label] = count
 
+    # Filter out off-topic spurious hits and rank survivors by relevance
+    papers = filter_and_rank_papers(papers, decon, min_relevance=0.20)
+
     elapsed = time.time() - start_time
     logger.info(
-        f"Paper search for '{search_request.query}' completed in {elapsed:.4f}s | "
+        f"Paper search for '{search_request.query}' (topic: '{clean_topic}') completed in {elapsed:.4f}s | "
         + " + ".join(f"{v} {k}" for k, v in source_counts.items())
         + f" = {len(papers)} total"
     )
@@ -318,24 +324,18 @@ async def synthesize(
     start_time = time.time()
     logger.info(f"Starting synthesis for query: {synth_request.query}")
     
-    agent = get_research_agent(
-        provider=synth_request.provider,
-        model=synth_request.model
-    )
-
     # RAG: index the current papers, then retrieve the most relevant chunks
     # to enrich the synthesis context beyond what the user explicitly selected.
     rag_context = ""
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, vector_store.index_papers, synth_request.papers)
-        rag_context = await loop.run_in_executor(
-            None, vector_store.retrieve_rag_context, synth_request.query
+        await asyncio.to_thread(vector_store.index_papers, synth_request.papers)
+        rag_context = await asyncio.to_thread(
+            vector_store.retrieve_rag_context, synth_request.query
         )
     except Exception as rag_err:
         logger.warning(f"RAG enrichment skipped: {rag_err}")
 
-    result = await agent.synthesize(
+    result = await synthesize_literature(
         query=synth_request.query,
         papers=synth_request.papers,
         output_language=synth_request.output_language or "English",
@@ -356,8 +356,8 @@ async def synthesize(
     await db.commit()
     
     # Generate follow-up questions
-    followup = await agent.generate_followup_questions(
-        context=agent._build_context(synth_request.papers),
+    followup = await generate_followup_questions(
+        context=build_paper_context(synth_request.papers),
         query=synth_request.query
     )
     
@@ -367,39 +367,6 @@ async def synthesize(
         processing_time=processing_time,
         followup_questions=followup
     )
-
-@router.post("/synthesize/validated")
-async def synthesize_validated(
-    request: Request,
-    synth_request: SynthesisRequest,
-    current_user: dict = Depends(get_current_user),
-    _trial: dict = Depends(require_trial_or_active),
-):
-    """
-    Drafter + Critic multi-agent synthesis.
-    Uses Gemini for drafting and Groq for citation validation.
-    Returns the synthesis with per-citation confidence scores and flagged unsupported claims.
-    """
-    if not synth_request.papers:
-        raise HTTPException(status_code=400, detail="No papers provided")
-
-    start_time = time.time()
-    result: ValidatedSynthesis = await validated_synthesis(
-        query=synth_request.query,
-        papers=synth_request.papers,
-        output_language=synth_request.output_language or "English",
-    )
-    processing_time = time.time() - start_time
-
-    return {
-        "answer": result.draft,
-        "citations": [c.model_dump() for c in result.citations],
-        "flagged_count": result.flagged_count,
-        "overall_confidence": result.overall_confidence,
-        "critique_summary": result.critique_summary,
-        "processing_time": processing_time,
-        "sources_used": list(range(1, len(synth_request.papers) + 1)),
-    }
 
 @router.post("/synthesize/stream")
 async def synthesize_streaming(
@@ -411,18 +378,12 @@ async def synthesize_streaming(
     if not synth_request.papers:
         raise HTTPException(status_code=400, detail="No papers provided")
     
-    agent = get_research_agent(
-        provider=synth_request.provider,
-        model=synth_request.model
-    )
-
     # RAG enrichment (best-effort, non-blocking)
     rag_context = ""
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, vector_store.index_papers, synth_request.papers)
-        rag_context = await loop.run_in_executor(
-            None, vector_store.retrieve_rag_context, synth_request.query
+        await asyncio.to_thread(vector_store.index_papers, synth_request.papers)
+        rag_context = await asyncio.to_thread(
+            vector_store.retrieve_rag_context, synth_request.query
         )
     except Exception as rag_err:
         logger.warning(f"RAG enrichment skipped (stream): {rag_err}")
@@ -430,7 +391,7 @@ async def synthesize_streaming(
     async def generate():
         logger.info(f"Starting streaming synthesis for query: {synth_request.query}")
         try:
-            async for chunk in agent.synthesize_streaming(
+            async for chunk in stream_synthesis(
                 query=synth_request.query,
                 papers=synth_request.papers,
                 output_language=synth_request.output_language or "English",
@@ -444,8 +405,8 @@ async def synthesize_streaming(
             logger.info(f"Streaming synthesis for '{synth_request.query}' finished")
             # Generate and stream follow-up questions at the end
             try:
-                followup = await agent.generate_followup_questions(
-                    context=agent._build_context(synth_request.papers),
+                followup = await generate_followup_questions(
+                    context=build_paper_context(synth_request.papers),
                     query=synth_request.query
                 )
                 yield f"data: {json.dumps({'followup': followup})}\n\n"
@@ -468,22 +429,18 @@ async def collaborate_synthesis(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Multi-agent collaborative synthesis (Groq + Gemini).
+    Multi-perspective collaborative synthesis.
     """
     if not synth_request.papers:
         raise HTTPException(status_code=400, detail="No papers provided")
         
-    agent = get_research_agent()
-    
     async def generate():
         logger.info(f"Starting collaborative synthesis for query: {synth_request.query}")
         try:
-            full_content = ""
-            async for chunk in agent.collaborate_research_streaming(
+            async for chunk in stream_collaborative_synthesis(
                 query=synth_request.query,
                 papers=synth_request.papers
             ):
-                full_content += chunk
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
             
         except Exception as e:
@@ -492,8 +449,8 @@ async def collaborate_synthesis(
         finally:
             # Generate and stream follow-up questions at the end
             try:
-                followup = await agent.generate_followup_questions(
-                    context=agent._build_context(synth_request.papers),
+                followup = await generate_followup_questions(
+                    context=build_paper_context(synth_request.papers),
                     query=synth_request.query
                 )
                 yield f"data: {json.dumps({'followup': followup})}\n\n"
@@ -577,7 +534,7 @@ async def explain_paper_impact(
     # Get user career field
     result = await db.execute(select(User).where(User.id == current_user["user_id"]))
     user = result.scalar_one_or_none()
-    career_field = user.career_field if user and user.career_field else "Academic Research"
+    career_field = str(user.career_field) if user and user.career_field else "Academic Research"
     
     # Get paper details
     openalex = get_openalex_service(client=request.app.state.http_client)
@@ -585,33 +542,49 @@ async def explain_paper_impact(
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
         
-    agent = get_research_agent()
-    impact_data = await agent.explain_paper_impact(paper, career_field)
+    impact_data = await evaluate_paper_impact(paper, career_field)
+    fallback_title = paper.get("title", "") if isinstance(paper, dict) else getattr(paper, "title", "")
     
     return PaperImpactResponse(
         paper_id=paper_id,
         career_field=career_field,
-        **impact_data
+        impact_summary=str(impact_data.get("impact_summary", "")),
+        relevance_score=int(impact_data.get("relevance_score", 7)),
+        key_takeaway=str(impact_data.get("key_takeaway", fallback_title)),
+        potential_applications=list(impact_data.get("potential_applications", [])),
     )
 @router.post("/chat/stream")
 async def chat_research_streaming(
     request: Request,
     chat_request: ChatResearchRequest,
     current_user: dict = Depends(get_current_user),
-    _gate: dict = Depends(require_trial_or_active),
+    _trial: dict = Depends(require_trial_or_active),
     db: AsyncSession = Depends(get_db)
 ):
-    agent = get_research_agent(
-        provider=chat_request.provider,
-        model=chat_request.model
+    from app.services.research_router import ResearchRouter
+    from app.models.database import User, SavedPaper
+    from sqlalchemy import select
+
+    logger.info(
+        f"[ResearchAPI] /chat/stream called by user '{current_user['user_id']}': "
+        f"query='{chat_request.query[:100]}', indexes={chat_request.selected_indexes}, "
+        f"mode={chat_request.research_mode}, latency={chat_request.latency_mode}"
     )
-    
+
+    # Resolve user career field from profile if not explicitly passed
+    career_field = chat_request.career_field
+    if not career_field:
+        try:
+            user_res = await db.execute(select(User).where(User.id == current_user["user_id"]))
+            db_user = user_res.scalar_one_or_none()
+            if db_user and db_user.career_field:
+                career_field = db_user.career_field
+        except Exception as e:
+            logger.warning(f"Could not load user career_field: {e}")
+
     # Fetch local sources if IDs provided
     local_papers = []
     if chat_request.source_ids:
-        from app.models.database import SavedPaper
-        from sqlalchemy import select
-        
         result = await db.execute(
             select(SavedPaper).where(
                 SavedPaper.user_id == current_user["user_id"],
@@ -629,28 +602,49 @@ async def chat_research_streaming(
                 authors=p.authors
             ))
 
-    async def generate():
-        logger.info(f"Starting chat research for: {chat_request.query}")
-        history_dicts = [{"role": m.role, "content": m.content} for m in chat_request.history]
-        
-        try:
-            async for chunk in agent.chat_research_streaming(
-                query=chat_request.query,
-                history=history_dicts,
-                local_papers=local_papers,
-                uploaded_context=chat_request.uploaded_text or ""
-            ):
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
-        except Exception as e:
-            logger.error(f"Chat research failed: {str(e)}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        finally:
-            yield "data: [DONE]\n\n"
-    
+    # Incorporate active research thread papers if provided
+    if chat_request.papers:
+        existing_pids = {p.id for p in local_papers}
+        for item in chat_request.papers:
+            if isinstance(item, dict):
+                pid = str(item.get("id") or item.get("paper_id") or item.get("url") or "")
+                if pid and pid not in existing_pids:
+                    existing_pids.add(pid)
+                    local_papers.append(PaperBase(
+                        id=pid,
+                        title=item.get("title") or "Scholarly Publication",
+                        year=item.get("year") if isinstance(item.get("year"), int) else None,
+                        citations=item.get("citations") if isinstance(item.get("citations"), int) else 0,
+                        abstract=item.get("abstract") or item.get("excerpt") or "",
+                        authors=item.get("authors") if isinstance(item.get("authors"), list) else []
+                    ))
+
+    router_engine = ResearchRouter(http_client=request.app.state.http_client)
+    history_dicts = [
+        {
+            "role": m.role,
+            "content": m.content,
+            "sources": m.sources,
+        }
+        for m in chat_request.history
+    ]
+
     return StreamingResponse(
-        generate(),
+        router_engine.stream_investigation(
+            query=chat_request.query,
+            history=history_dicts,
+            career_field=career_field,
+            selected_indexes=chat_request.selected_indexes,
+            research_mode=chat_request.research_mode or "synthesis",
+            latency_mode=chat_request.latency_mode or "auto",
+            citation_style=chat_request.citation_style or "apa",
+            local_papers=local_papers,
+            uploaded_context=chat_request.uploaded_text or "",
+            user_id=current_user["user_id"],
+        ),
         media_type="text/event-stream"
     )
+
 
 @router.post("/gap-analysis", response_model=GapAnalysisResponse)
 async def run_gap_analysis(
@@ -673,10 +667,8 @@ async def run_gap_analysis(
         f"with {len(gap_request.papers)} papers."
     )
 
-    agent = get_research_agent()
-
     try:
-        data = await agent.analyze_research_gaps(
+        data = await analyze_research_gaps(
             papers=gap_request.papers,
             research_context=gap_request.research_context,
         )
@@ -709,10 +701,12 @@ async def get_search_history(
     )
     return result.scalars().all()
 
-from sqlalchemy.future import select
-from app.models.database import DeepResearchSession
-import hashlib
-from app.core.cache import cache
+
+def _deep_research_cache_key(user_id: str, query: str) -> str:
+    """User-scoped deep-research cache key (never share results across tenants)."""
+    query_hash = hashlib.md5(query.encode()).hexdigest()
+    return f"deep_research:v1:{user_id}:{query_hash}"
+
 
 @router.post("/deep-research", response_model=DeepResearchResponse)
 async def start_deep_research(
@@ -727,25 +721,53 @@ async def start_deep_research(
     Returns an interaction ID that can be polled for status.
     """
     try:
-        query_hash = hashlib.md5(dr_request.query.encode()).hexdigest()
-        cache_key = f"deep_research:{query_hash}"
+        cache_key = _deep_research_cache_key(current_user["user_id"], dr_request.query)
         cached_output = await cache.get(cache_key)
 
         if cached_output:
-            # Create a DB session marked as completed directly
+            cached_id = f"cached_{uuid.uuid4().hex}"
             new_session = DeepResearchSession(
                 user_id=current_user["user_id"],
                 query=dr_request.query,
-                interaction_id="cached_" + query_hash,
+                interaction_id=cached_id,
                 status="completed",
                 output=cached_output
             )
             db.add(new_session)
             await db.commit()
             return DeepResearchResponse(
-                interaction_id=new_session.interaction_id,
+                interaction_id=cached_id,
                 message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
             )
+
+        user_id = current_user["user_id"] if dr_request.use_user_store else None
+        if dr_request.file_search_store_names:
+            if not user_id:
+                raise HTTPException(status_code=400, detail="File search stores require the user store")
+            from app.services.gemini_file_store import get_gemini_file_store_service
+            store_service = get_gemini_file_store_service()
+            owned_store = await store_service.get_or_create_user_store(user_id)
+            if not owned_store or any(store != owned_store for store in dr_request.file_search_store_names):
+                raise HTTPException(status_code=403, detail="File search store is not owned by the current user")
+
+        async def persist_result(result_interaction_id: str, result_data: dict) -> None:
+            for attempt in range(3):
+                async with AsyncSessionLocal() as result_db:
+                    result = await result_db.execute(
+                        select(DeepResearchSession).where(
+                            DeepResearchSession.user_id == current_user["user_id"],
+                            DeepResearchSession.interaction_id == result_interaction_id,
+                        )
+                    )
+                    session = result.scalars().first()
+                    if session:
+                        session.status = result_data.get("status", "failed")
+                        session.output = result_data.get("output")
+                        session.error = result_data.get("error")
+                        await result_db.commit()
+                        return
+                if attempt < 2:
+                    await asyncio.sleep(0.1)
 
         agent = get_deep_research_agent()
         interaction_id = await agent.start_research(
@@ -755,6 +777,9 @@ async def start_deep_research(
             thinking_summaries=dr_request.thinking_summaries,
             visualization=dr_request.visualization,
             collaborative_planning=dr_request.collaborative_planning,
+            file_search_store_names=dr_request.file_search_store_names,
+            user_id=user_id,
+            on_complete=persist_result,
         )
 
         # Save to DB
@@ -771,9 +796,59 @@ async def start_deep_research(
             interaction_id=interaction_id,
             message="Deep research task started successfully. Poll the status using /research/deep-research/{interaction_id}"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error starting deep research: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
+
+
+@router.post("/deep-research/stream")
+async def stream_deep_research(
+    dr_request: DeepResearchRequest,
+    current_user: dict = Depends(get_current_user),
+    _trial: dict = Depends(require_trial_or_active),
+):
+    """
+    Stream deep research reasoning, interim updates, and final output via Server-Sent Events (SSE).
+    """
+    user_id = current_user["user_id"] if dr_request.use_user_store else None
+    if dr_request.file_search_store_names:
+        if not user_id:
+            raise HTTPException(status_code=400, detail="File search stores require the user store")
+        from app.services.gemini_file_store import get_gemini_file_store_service
+        store_service = get_gemini_file_store_service()
+        owned_store = await store_service.get_or_create_user_store(user_id)
+        if not owned_store or any(store != owned_store for store in dr_request.file_search_store_names):
+            raise HTTPException(status_code=403, detail="File search store is not owned by the current user")
+    agent = get_deep_research_agent()
+
+    async def event_generator():
+        try:
+            async for event in agent.stream_research(
+                query=dr_request.query,
+                mcp_servers=dr_request.mcp_servers,
+                engine=dr_request.engine,
+                thinking_summaries=dr_request.thinking_summaries,
+                visualization=dr_request.visualization,
+                collaborative_planning=dr_request.collaborative_planning,
+                file_search_store_names=dr_request.file_search_store_names,
+                user_id=user_id,
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            logger.error(f"Error in deep research stream: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 @router.get("/deep-research/{interaction_id}", response_model=DeepResearchStatusResponse)
 async def get_deep_research_status(
@@ -788,7 +863,10 @@ async def get_deep_research_status(
     try:
         if interaction_id.startswith("cached_"):
             # Fetch directly from DB
-            stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
+            stmt = select(DeepResearchSession).where(
+                DeepResearchSession.user_id == current_user["user_id"],
+                DeepResearchSession.interaction_id == interaction_id,
+            )
             result = await db.execute(stmt)
             db_session = result.scalars().first()
             if not db_session:
@@ -800,22 +878,34 @@ async def get_deep_research_status(
                 error=db_session.error
             )
 
+        stmt = select(DeepResearchSession).where(
+            DeepResearchSession.user_id == current_user["user_id"],
+            DeepResearchSession.interaction_id == interaction_id,
+        )
+        result = await db.execute(stmt)
+        db_session = result.scalars().first()
+
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Interaction not found")
+
         agent = get_deep_research_agent()
         status_info = await agent.get_research_status(interaction_id)
 
-        # Update DB if found
-        stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
-        result = await db.execute(stmt)
-        db_session = result.scalars().first()
+        if status_info["status"] == "failed" and status_info.get("error", "").startswith("Unknown interaction ID"):
+            return DeepResearchStatusResponse(
+                interaction_id=interaction_id,
+                status=db_session.status,
+                output=db_session.output,
+                error=db_session.error,
+            )
 
         if db_session:
             if status_info["status"] != db_session.status:
                 db_session.status = status_info["status"]
                 if status_info.get("output"):
                     db_session.output = status_info["output"]
-                    # Cache to Redis
-                    query_hash = hashlib.md5(db_session.query.encode()).hexdigest()
-                    cache_key = f"deep_research:{query_hash}"
+                    # Cache to Redis (user-scoped key)
+                    cache_key = _deep_research_cache_key(current_user["user_id"], db_session.query)
                     await cache.set(cache_key, db_session.output, ttl=86400)
                 if status_info.get("error"):
                     db_session.error = status_info["error"]
@@ -828,52 +918,8 @@ async def get_deep_research_status(
             error=status_info.get("error"),
             progress=status_info.get("progress"),
         )
-    except Exception as e:
-        logger.error(f"Error polling deep research status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
-
-@router.post("/deep-research/{interaction_id}/validate", response_model=DeepResearchValidationResponse)
-async def validate_deep_research(
-    interaction_id: str,
-    current_user: dict = Depends(get_current_user),
-    _trial: dict = Depends(require_trial_or_active),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Validate the output of a completed deep research task.
-    Extracts claims, checks citations, and returns a confidence score.
-    """
-    try:
-        # First get the research output
-        if interaction_id.startswith("cached_"):
-            stmt = select(DeepResearchSession).where(DeepResearchSession.interaction_id == interaction_id)
-            result = await db.execute(stmt)
-            db_session = result.scalars().first()
-            if not db_session or db_session.status != "completed":
-                raise HTTPException(status_code=400, detail="Cannot validate incomplete cached research task.")
-            research_text = db_session.output
-        else:
-            dr_agent = get_deep_research_agent()
-            status_info = await dr_agent.get_research_status(interaction_id)
-
-            if status_info["status"] != "completed":
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot validate incomplete research task. Current status: {status_info['status']}"
-                )
-
-            research_text = status_info.get("output", "")
-        if not research_text:
-             raise HTTPException(status_code=400, detail="Research task completed but output is empty.")
-
-        # Run validation
-        validation_agent = get_validation_agent()
-        validation_result = await validation_agent.validate_research_output(interaction_id, research_text)
-
-        return validation_result
-
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error validating deep research: {e}", exc_info=True)
+        logger.error(f"Error polling deep research status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")

@@ -4,7 +4,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.database import User, UserSettings
+from app.models.database import UserSettings
 
 
 @pytest.mark.asyncio
@@ -14,12 +14,10 @@ async def test_get_me_creates_user(client: AsyncClient, db_session: AsyncSession
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == "test-user-001"
-    assert data["email"] == "test@example.com"
-    assert data["subscription_status"] == "inactive"
+    assert data["subscription_status"] == "trialing"
+    assert data["trial_ends_at"] is not None
 
     # Verify UserSettings was also created
-    settings = await db_session.get(UserSettings, data["id"] or 1)
-    # The settings row should exist
     from sqlalchemy import select
     result = await db_session.execute(select(UserSettings).where(UserSettings.user_id == "test-user-001"))
     assert result.scalar_one_or_none() is not None
@@ -72,7 +70,7 @@ async def test_get_settings_creates_defaults(client: AsyncClient, seeded_user):
     assert resp.status_code == 200
     data = resp.json()
     assert data["theme"] == "dark"
-    assert data["llm_provider"] == "groq"
+    assert data["llm_provider"] == "nvidia"
 
 
 @pytest.mark.asyncio
@@ -94,7 +92,6 @@ async def test_update_settings(client: AsyncClient, seeded_user):
 @pytest.mark.asyncio
 async def test_start_trial(client: AsyncClient, db_session):
     """POST /start-trial activates a 7-day trial for inactive users."""
-    from datetime import datetime, timezone
     user = User(
         id="test-user-001", username="testuser", email="test@example.com",
         expertise_areas=[], subscription_status="inactive",

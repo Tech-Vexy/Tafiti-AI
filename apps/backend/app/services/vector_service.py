@@ -3,13 +3,10 @@ Vector store service supporting pgvector (Supabase / Neon PostgreSQL) with optio
 """
 
 from typing import List, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer
-import uuid
 import time
 import os
 import asyncio
 import concurrent.futures
-import numpy as np
 
 from sqlalchemy import select, delete, func
 from app.core.config import settings
@@ -50,6 +47,7 @@ class VectorStore:
                 os.environ["HF_TOKEN"] = settings.HF_TOKEN
 
             logger.info("Loading embedding model...")
+            from sentence_transformers import SentenceTransformer
             self._embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
             self._initialized = True
             logger.info("VectorStore initialization complete.")
@@ -62,7 +60,7 @@ class VectorStore:
         self._ensure_initialized()
         return self._embedding_model
 
-    def add_query(
+    async def aadd_query(
         self,
         query_id: str,
         query_text: str,
@@ -73,25 +71,23 @@ class VectorStore:
         combined_text = f"{query_text}\n\n{answer}"
 
         try:
-            embedding = self.embedding_model.encode(combined_text).tolist()
+            embedding = await asyncio.to_thread(self.embedding_model.encode, combined_text)
+            embedding = embedding.tolist()
 
-            async def _add():
-                async with AsyncSessionLocal() as session:
-                    # Remove any existing with this query_id
-                    await session.execute(
-                        delete(QueryEmbedding).where(QueryEmbedding.query_id == str(query_id))
-                    )
-                    record = QueryEmbedding(
-                        query_id=str(query_id),
-                        user_id=str(metadata.get("user_id", "")) or None,
-                        text=combined_text,
-                        query_metadata=metadata,
-                        embedding=embedding,
-                    )
-                    session.add(record)
-                    await session.commit()
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    delete(QueryEmbedding).where(QueryEmbedding.query_id == str(query_id))
+                )
+                record = QueryEmbedding(
+                    query_id=str(query_id),
+                    user_id=str(metadata.get("user_id", "")) or None,
+                    text=combined_text,
+                    query_metadata=metadata,
+                    embedding=embedding,
+                )
+                session.add(record)
+                await session.commit()
 
-            _run_async(_add())
             elapsed = time.time() - start_time
             logger.info(f"Successfully added query {query_id} to vector store in {elapsed:.4f}s")
             return query_id
@@ -99,7 +95,16 @@ class VectorStore:
             logger.error(f"Failed to add query {query_id} to vector store: {str(e)}")
             raise
 
-    def search_similar(
+    def add_query(
+        self,
+        query_id: str,
+        query_text: str,
+        answer: str,
+        metadata: Dict[str, Any]
+    ) -> str:
+        return _run_async(self.aadd_query(query_id, query_text, answer, metadata))
+
+    async def asearch_similar(
         self,
         query: str,
         k: int = 5,
@@ -109,67 +114,66 @@ class VectorStore:
         logger.info(f"Searching for similar queries to: '{query}'")
 
         try:
-            embedding = self.embedding_model.encode(query).tolist()
+            embedding = await asyncio.to_thread(self.embedding_model.encode, query)
+            embedding = embedding.tolist()
 
-            async def _search():
-                async with AsyncSessionLocal() as session:
-                    # If pgvector is available, use cosine_distance
-                    if HAS_PGVECTOR and not os.environ.get("TESTING"):
-                        try:
-                            stmt = select(
-                                QueryEmbedding,
-                                QueryEmbedding.embedding.cosine_distance(embedding).label("distance")
-                            )
-                            if user_id is not None:
-                                stmt = stmt.filter(QueryEmbedding.user_id == str(user_id))
-                            stmt = stmt.order_by("distance").limit(k)
-                            res = await session.execute(stmt)
-                            rows = res.all()
-                            return [
-                                {
-                                    'id': row[0].query_id,
-                                    'distance': float(row[1]) if row[1] is not None else 1.0,
-                                    'metadata': row[0].query_metadata or {},
-                                    'document': row[0].text or ""
-                                }
-                                for row in rows
-                            ]
-                        except Exception as inner_e:
-                            logger.warning(f"pgvector native distance failed, falling back: {inner_e}")
+            async with AsyncSessionLocal() as session:
+                # If pgvector is available, use cosine_distance
+                if HAS_PGVECTOR and not os.environ.get("TESTING"):
+                    try:
+                        stmt = select(
+                            QueryEmbedding,
+                            QueryEmbedding.embedding.cosine_distance(embedding).label("distance")
+                        )
+                        if user_id is not None:
+                            stmt = stmt.filter(QueryEmbedding.user_id == str(user_id))
+                        stmt = stmt.order_by("distance").limit(k)
+                        res = await session.execute(stmt)
+                        rows = res.all()
+                        return [
+                            {
+                                'id': row[0].query_id,
+                                'distance': float(row[1]) if row[1] is not None else 1.0,
+                                'metadata': row[0].query_metadata or {},
+                                'document': row[0].text or ""
+                            }
+                            for row in rows
+                        ]
+                    except Exception as inner_e:
+                        logger.warning(f"pgvector native distance failed, falling back: {inner_e}")
 
-                    # Fallback in-memory distance calculation
-                    stmt = select(QueryEmbedding)
-                    if user_id is not None:
-                        stmt = stmt.filter(QueryEmbedding.user_id == str(user_id))
-                    stmt = stmt.limit(50)
-                    res = await session.execute(stmt)
-                    items = res.scalars().all()
+                # Fallback in-memory distance calculation
+                stmt = select(QueryEmbedding)
+                if user_id is not None:
+                    stmt = stmt.filter(QueryEmbedding.user_id == str(user_id))
+                stmt = stmt.limit(50)
+                res = await session.execute(stmt)
+                items = res.scalars().all()
 
-                    scored = []
-                    for item in items:
-                        if item.embedding:
-                            v = item.embedding
-                            dot = sum(a * b for a, b in zip(embedding, v))
-                            norm1 = sum(a * a for a in embedding) ** 0.5
-                            norm2 = sum(b * b for b in v) ** 0.5
-                            sim = dot / (norm1 * norm2) if (norm1 * norm2) > 0 else 0.0
-                            dist = max(0.0, 1.0 - sim)
-                        else:
-                            dist = 1.0
-                        scored.append((dist, item))
+                scored = []
+                for item in items:
+                    if item.embedding:
+                        v = item.embedding
+                        dot = sum(a * b for a, b in zip(embedding, v))
+                        norm1 = sum(a * a for a in embedding) ** 0.5
+                        norm2 = sum(b * b for b in v) ** 0.5
+                        sim = dot / (norm1 * norm2) if (norm1 * norm2) > 0 else 0.0
+                        dist = max(0.0, 1.0 - sim)
+                    else:
+                        dist = 1.0
+                    scored.append((dist, item))
 
-                    scored.sort(key=lambda x: x[0])
-                    return [
-                        {
-                            'id': item.query_id,
-                            'distance': dist,
-                            'metadata': item.query_metadata or {},
-                            'document': item.text or ""
-                        }
-                        for dist, item in scored[:k]
-                    ]
+                scored.sort(key=lambda x: x[0])
+                similar_queries = [
+                    {
+                        'id': item.query_id,
+                        'distance': dist,
+                        'metadata': item.query_metadata or {},
+                        'document': item.text or ""
+                    }
+                    for dist, item in scored[:k]
+                ]
 
-            similar_queries = _run_async(_search())
             elapsed = time.time() - start_time
             logger.info(f"Vector search found {len(similar_queries)} results in {elapsed:.4f}s")
             return similar_queries
@@ -177,21 +181,29 @@ class VectorStore:
             logger.error(f"Vector search failed: {str(e)}")
             return []
 
-    def delete_query(self, query_id: str) -> bool:
-        try:
-            async def _del():
-                async with AsyncSessionLocal() as session:
-                    await session.execute(
-                        delete(QueryEmbedding).where(QueryEmbedding.query_id == str(query_id))
-                    )
-                    await session.commit()
+    def search_similar(
+        self,
+        query: str,
+        k: int = 5,
+        user_id: Optional[Any] = None
+    ) -> List[Dict[str, Any]]:
+        return _run_async(self.asearch_similar(query, k, user_id))
 
-            _run_async(_del())
+    async def adelete_query(self, query_id: str) -> bool:
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    delete(QueryEmbedding).where(QueryEmbedding.query_id == str(query_id))
+                )
+                await session.commit()
             logger.info(f"Deleted query {query_id} from vector store")
             return True
         except Exception as e:
             logger.error(f"Failed to delete query {query_id} from vector store: {str(e)}")
             return False
+
+    def delete_query(self, query_id: str) -> bool:
+        return _run_async(self.adelete_query(query_id))
 
     def update_query(
         self,

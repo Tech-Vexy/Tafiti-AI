@@ -14,8 +14,6 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from agno.agent import Agent
-from agno.models.groq import Groq as GroqModel
-from agno.models.openai import OpenAIChat
 
 from app.core.config import settings
 from app.core.security import get_current_user

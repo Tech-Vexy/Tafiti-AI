@@ -14,15 +14,13 @@ Key capabilities:
 
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Optional
 
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
 from app.models.database import (
     ResearchSessionState, TaskExecutionLog,
-    ResearchTask, ResearchQuestion,
 )
 
 logger = get_logger("durability")

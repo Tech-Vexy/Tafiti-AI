@@ -5,11 +5,8 @@ Uses the same LLM provider setup as the research agents (Agno 2.x).
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from collections.abc import AsyncIterator
 
 from agno.agent import Agent
-from agno.models.groq import Groq as GroqModel
-from agno.models.openai import OpenAIChat
 
 from app.core.config import settings
 from app.core.security import get_current_user

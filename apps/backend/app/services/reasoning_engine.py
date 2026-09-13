@@ -11,16 +11,13 @@ Responsibilities:
 - Produce research reports from the claim graph
 """
 
-from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logger import get_logger
 from app.models.database import (
-    ResearchQuestion, ResearchTask, Source, Passage, Evidence, Claim,
+    ResearchQuestion, ResearchTask, Source, Evidence, Claim,
 )
 
 logger = get_logger("reasoning_engine")

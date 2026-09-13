@@ -59,7 +59,7 @@ async def get_testimonials(
         select(TrialFeedback, User)
         .join(User, TrialFeedback.user_id == User.id)
         .where(TrialFeedback.rating >= 4)
-        .where(TrialFeedback.improvement_text != None)  # Ensure there is some text content
+        .where(TrialFeedback.improvement_text.isnot(None))  # Ensure there is some text content
         .order_by(TrialFeedback.created_at.desc())
         .limit(limit)
     )

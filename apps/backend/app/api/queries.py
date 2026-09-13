@@ -4,7 +4,6 @@ from sqlalchemy import select, desc
 from typing import List
 from datetime import datetime
 import traceback
-import json
 
 from app.db.session import get_db
 from app.models.database import SavedQuery, User
@@ -21,6 +20,7 @@ logger = get_logger("queries_api")
 router = APIRouter()
 
 
+@router.post("", response_model=SavedQueryResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=SavedQueryResponse, status_code=status.HTTP_201_CREATED)
 async def create_saved_query(
     query_data: SavedQueryCreate,
@@ -47,9 +47,9 @@ async def create_saved_query(
         user_id=current_user["user_id"],
         title=query_data.title,
         query=query_data.query,
-        papers=[p.model_dump() for p in query_data.papers],
-        answer=query_data.answer,
-        tags=query_data.tags
+        papers=[p.model_dump() if hasattr(p, "model_dump") else p for p in query_data.papers] if query_data.papers else [],
+        answer=query_data.answer or "",
+        tags=query_data.tags or []
     )
     
     try:
@@ -60,19 +60,22 @@ async def create_saved_query(
         vector_id = f"query_{saved_query.id}_{current_user['user_id']}"
         logger.info(f"Adding query to vector store with ID: {vector_id}")
         
-        vector_store.add_query(
-            query_id=vector_id,
-            query_text=query_data.query,
-            answer=query_data.answer,
-            metadata={
-                "query_id": saved_query.id,
-                "user_id": current_user["user_id"],
-                "title": query_data.title,
-                "tags": ",".join(query_data.tags)
-            }
-        )
+        try:
+            await vector_store.aadd_query(
+                query_id=vector_id,
+                query_text=query_data.query,
+                answer=query_data.answer or "",
+                metadata={
+                    "query_id": saved_query.id,
+                    "user_id": current_user["user_id"],
+                    "title": query_data.title,
+                    "tags": ",".join(query_data.tags or [])
+                }
+            )
+            setattr(saved_query, "vector_id", vector_id)
+        except Exception as ve:
+            logger.warning(f"Could not index query in vector store: {ve}")
         
-        saved_query.vector_id = vector_id
         await db.commit()
         await db.refresh(saved_query)
         logger.info(f"Successfully created and indexed saved query {saved_query.id}")
@@ -84,6 +87,7 @@ async def create_saved_query(
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
 
 
+@router.get("", response_model=List[SavedQueryResponse], include_in_schema=False)
 @router.get("/", response_model=List[SavedQueryResponse])
 async def get_saved_queries(
     skip: int = Query(default=0, ge=0),
@@ -170,7 +174,10 @@ async def delete_saved_query(
         raise HTTPException(status_code=404, detail="Query not found")
     
     if query.vector_id:
-        vector_store.delete_query(query.vector_id)
+        try:
+            await vector_store.adelete_query(query.vector_id)
+        except Exception as ve:
+            logger.warning(f"Could not delete query from vector store: {ve}")
     
     await db.delete(query)
     await db.commit()
@@ -204,7 +211,7 @@ async def vector_search(
     search_request: VectorSearchRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    results = vector_store.search_similar(
+    results = await vector_store.asearch_similar(
         query=search_request.query,
         k=search_request.k,
         user_id=current_user["user_id"]

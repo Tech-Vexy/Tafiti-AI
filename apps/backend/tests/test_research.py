@@ -3,6 +3,8 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import patch, AsyncMock, MagicMock
 from app.models.schemas import PaperBase
+from app.models.database import DeepResearchSession
+from app.models.database import Thesis, ThesisCollaborator
 
 
 @pytest.mark.asyncio
@@ -18,14 +20,10 @@ async def test_search_papers(client: AsyncClient, seeded_user):
 
     with patch.multiple("app.api.research",
         get_openalex_service=MagicMock(return_value=mock_service),
-        get_semantic_scholar_service=MagicMock(return_value=empty),
-        get_arxiv_service=MagicMock(return_value=empty),
         get_core_service=MagicMock(return_value=empty),
         get_elsevier_service=MagicMock(return_value=empty),
-        get_doaj_service=MagicMock(return_value=empty),
-        get_ajol_service=MagicMock(return_value=empty),
-        get_africarxiv_service=MagicMock(return_value=empty),
         get_springer_service=MagicMock(return_value=empty),
+        get_parallel_service=MagicMock(return_value=empty),
     ):
         resp = await client.post("/api/v1/research/search", json={
             "query": "machine learning", "limit": 5,
@@ -50,6 +48,45 @@ async def test_search_history(client: AsyncClient, seeded_user):
     resp = await client.get("/api/v1/research/history")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+@pytest.mark.asyncio
+async def test_deep_research_status_is_user_scoped(client: AsyncClient, seeded_user, seeded_second_user, db_session):
+    session = DeepResearchSession(
+        user_id=seeded_second_user.id,
+        query="private research",
+        interaction_id="dr_private",
+        status="completed",
+        output="private output",
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/research/deep-research/dr_private")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_deep_research_missing_status_is_not_found(client: AsyncClient, seeded_user):
+    response = await client.get("/api/v1/research/deep-research/does-not-exist")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_thesis_collaborator_access_is_persisted(client: AsyncClient, seeded_user, seeded_second_user, db_session):
+    thesis = Thesis(user_id=seeded_user.id, title="Shared thesis", content="{}")
+    db_session.add(thesis)
+    await db_session.flush()
+    db_session.add(ThesisCollaborator(thesis_id=thesis.id, user_id=seeded_second_user.id, role="editor"))
+    await db_session.commit()
+
+    from sqlalchemy import select
+    result = await db_session.execute(select(ThesisCollaborator).where(ThesisCollaborator.thesis_id == thesis.id))
+    collaborator = result.scalar_one()
+    assert collaborator.status == "active"
+    assert collaborator.role == "editor"
 
 
 @pytest.mark.asyncio

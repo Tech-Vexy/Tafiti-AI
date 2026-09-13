@@ -1,178 +1,88 @@
-# Research Assistant - Frontend
+# Tafiti AI — Frontend
 
-Modern React frontend with Vite, Tailwind CSS, and state management.
+Next.js (App Router) frontend for the Tafiti AI academic research assistant. Provides a research chat experience with streaming deep-research agents, live research tracking, citations/grounding, collaborative editing, library/history, billing, and profile management.
 
 ## Tech Stack
 
-- **React 18**: UI library
-- **Vite**: Build tool & dev server
-- **Tailwind CSS**: Utility-first styling
-- **Zustand**: State management
-- **Axios**: HTTP client
-- **React Router**: Navigation
-- **Lucide React**: Icons
+- **Next.js 16** (App Router, Turbopack), **React 19**, **TypeScript**
+- **Clerk**: authentication (middleware protection + server-side token injection)
+- **State**: Zustand stores (`research`, `library`, `UI`, `user`)
+- **UI**: MUI v6 + Tailwind CSS + Radix primitives (shadcn-style)
+- **Streaming**: `@microsoft/fetch-event-source` for SSE chat + AG-UI lifecycle events
+- **Collab editing**: Yjs + WebSocket provider
+- **Math rendering**: KaTeX + remark-math/rehype-katex
 
 ## Project Structure
 
 ```
-frontend/
+apps/frontend/
 ├── src/
-│   ├── api/              # API client
-│   ├── components/       # React components
-│   ├── hooks/            # Custom hooks
-│   ├── pages/            # Page components
-│   ├── store/            # Zustand stores
-│   ├── styles/           # Global styles
-│   ├── utils/            # Utilities
-│   ├── App.jsx           # Main app
-│   └── main.jsx          # Entry point
-├── public/               # Static assets
-├── index.html            # HTML template
-├── vite.config.js        # Vite config
-├── tailwind.config.js    # Tailwind config
-└── package.json          # Dependencies
+│   ├── app/                # Routes (App Router)
+│   │   ├── api/v1/[...path]/route.ts  # BFF proxy to the FastAPI backend
+│   │   ├── proxy.ts        # Clerk middleware (route protection)
+│   │   ├── (dashboard)/    # research, history, billing, profile
+│   │   ├── auth/           # Clerk sign-in / sign-up
+│   │   └── privacy/, terms/, manifest/, ...
+│   ├── components/         # ResearchChatbot/, ui/, citations, layout, landing, ...
+│   ├── hooks/              # useDashboard, useForm, useKeyboardShortcuts, ...
+│   ├── lib/                # citationUtils, ag-ui, yjs-provider/binding, utils
+│   ├── store/              # Zustand stores
+│   ├── types/              # Shared TypeScript types
+│   └── index.css, proxy.ts
+├── public/                 # Static assets
+├── next.config.mjs         # Security headers + CSP + remote image patterns
+└── package.json
 ```
 
-## Installation
+## Getting Started
+
+From the **repo root** (this is an npm/pnpm workspace):
 
 ```bash
-# Install dependencies
-npm install
-
-# or with yarn
-yarn install
-
-# or with pnpm
 pnpm install
+pnpm dev          # starts backend + frontend via Turborepo
 ```
 
-## Development
+Or run this app alone:
 
 ```bash
-# Start dev server
-npm run dev
-
-# Access at http://localhost:5173
+pnpm --filter @tafiti/frontend dev
 ```
 
-## Build
-
-```bash
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-```
-
-## Features
-
-### Pages
-- **Landing**: Welcome + features
-- **Login/Register**: Authentication
-- **Dashboard**: Main research interface
-- **Saved Queries**: Browse saved research
-- **Settings**: User preferences
-
-### Components
-- **SearchBar**: Paper search
-- **PaperCard**: Display paper info
-- **SynthesisView**: AI-generated answer
-- **SavedQueryList**: Grid of saved queries
-- **Header**: Navigation + user menu
-- **Modal**: Reusable dialog
-
-### State Management
-
-Using Zustand for global state:
-
-```javascript
-// stores/authStore.js
-export const useAuthStore = create((set) => ({
-  user: null,
-  token: null,
-  login: (user, token) => set({ user, token }),
-  logout: () => set({ user: null, token: null }),
-}))
-```
-
-### API Integration
-
-Axios instance with interceptors:
-
-```javascript
-// api/client.js
-const api = axios.create({
-  baseURL: '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-api.interceptors.request.use((config) => {
-  const token = getToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-```
+The frontend expects the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). All calls are proxied through the BFF route at `/api/v1/*`, which injects the Clerk JWT server-side so secrets never reach the browser.
 
 ## Environment Variables
 
-Create `.env.local`:
+Copy `apps/frontend/.env.example` to `apps/frontend/.env.local`. The key variables:
 
-```ini
-VITE_API_URL=http://localhost:8000
-VITE_APP_NAME=Research Assistant
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend base URL (in the browser) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk Publishable Key |
+| `CLERK_SECRET_KEY` | Clerk secret (used only by the BFF proxy) |
+| `NEXT_PUBLIC_CLERK_*_URL` | Clerk route configuration |
+
+## Available Scripts
+
+| Command | Description |
+|---|---|
+| `pnpm dev` | Start the dev server |
+| `pnpm build` | Production build (`next build`) |
+| `pnpm start` | Serve a production build |
+| `pnpm lint` | ESLint (flat config) |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm test` | Vitest unit tests |
+
+## Testing
+
+Vitest (with React Testing Library) is used for unit tests. Run once:
+
+```bash
+pnpm test
 ```
 
-## Styling
-
-Tailwind CSS with custom theme:
-
-```javascript
-// tailwind.config.js
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        primary: '#6366f1',
-        secondary: '#10b981',
-      },
-    },
-  },
-}
-```
+Watch mode: `pnpm test -- --watch`.
 
 ## Deployment
 
-### Vercel
-```bash
-vercel --prod
-```
-
-### Netlify
-```bash
-netlify deploy --prod
-```
-
-
-## Performance
-
-- Code splitting
-- Lazy loading
-- Image optimization
-- CSS purging
-- Gzip compression
-
-## Browser Support
-
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Edge 90+
-
-## License
-
-MIT
+Deployment is handled by **Netlify** (see `netlify.toml`) with the Next.js build output (`apps/frontend/.next`). The Backend-for-Frontend proxy keeps the Clerk secret server-side.
