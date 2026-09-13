@@ -4,6 +4,20 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description: 'The terms and conditions governing your use of Tafiti AI.',
+  alternates: {
+    canonical: '/terms',
+  },
+  openGraph: {
+    title: 'Terms of Service | Tafiti AI',
+    description: 'The terms and conditions governing your use of Tafiti AI.',
+    url: 'https://tafitiai.co.ke/terms',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Terms of Service | Tafiti AI',
+    description: 'The terms and conditions governing your use of Tafiti AI.',
+  },
 };
 
 export default function TermsPage() {

@@ -108,7 +108,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="format-detection" content="telephone=no" />
         <meta name="msapplication-TileColor" content="#030305" />
         <meta name="application-name" content="Tafiti AI" />
-        <link rel="canonical" href="https://tafitiai.co.ke" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -134,9 +133,35 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               url: "https://tafitiai.co.ke",
               potentialAction: {
                 "@type": "SearchAction",
-                target: "https://tafitiai.co.ke/?q={search_term_string}",
+                target: "https://tafitiai.co.ke/research?q={search_term_string}",
                 "query-input": "required name=search_term_string"
               }
+            })
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              name: "Tafiti AI",
+              url: "https://tafitiai.co.ke",
+              applicationCategory: "EducationalApplication",
+              operatingSystem: "All",
+              offers: {
+                "@type": "Offer",
+                price: "0",
+                priceCurrency: "USD"
+              },
+              description: "AI synthesis, gap analysis, and systematic review tools purpose-built for academic researchers across Africa and beyond.",
+              featureList: [
+                "Literature Synthesis across 200M+ papers",
+                "African Academic Research Integration (AJOL, AfricArxiv)",
+                "Citation Grounding & Verification",
+                "Systematic Review & PRISMA Export",
+                "Gap Analysis & Research Recommendation"
+              ]
             })
           }}
         />

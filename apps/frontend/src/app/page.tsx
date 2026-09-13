@@ -19,6 +19,9 @@ export const metadata: Metadata = {
     'academic writing',
     'scholar AI',
   ],
+  alternates: {
+    canonical: '/',
+  },
   openGraph: {
     title: 'Tafiti AI — Research Smarter. Publish Faster.',
     description: 'AI synthesis, gap analysis, and systematic review tools purpose-built for academic researchers.',

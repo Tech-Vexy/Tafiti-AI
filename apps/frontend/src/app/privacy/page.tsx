@@ -4,6 +4,20 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description: 'How Tafiti AI collects, uses, and protects your personal and research data.',
+  alternates: {
+    canonical: '/privacy',
+  },
+  openGraph: {
+    title: 'Privacy Policy | Tafiti AI',
+    description: 'How Tafiti AI collects, uses, and protects your personal and research data.',
+    url: 'https://tafitiai.co.ke/privacy',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Privacy Policy | Tafiti AI',
+    description: 'How Tafiti AI collects, uses, and protects your personal and research data.',
+  },
 };
 
 export default function PrivacyPage() {
