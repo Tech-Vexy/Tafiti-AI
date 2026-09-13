@@ -13,9 +13,9 @@ import SourcesSidebar from './SourcesSidebar';
 import { ResearchPaper } from './SourceCardsCarousel';
 import { extractAndStripSources } from '@/lib/citationUtils';
 
-export default function ResearchChatbotView() {
+export default function ResearchChatbotView({ initialQuery = '' }: { initialQuery?: string }) {
     const { user } = useUser();
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState(initialQuery);
     const [isGroundingOpen, setIsGroundingOpen] = useState(false);
     const [isSourcesRailOpen, setIsSourcesRailOpen] = useState(true);
     const [isSourcesCollapsed, setIsSourcesCollapsed] = useState(false);
@@ -23,6 +23,12 @@ export default function ResearchChatbotView() {
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const isSendingRef = useRef(false);
+
+    useEffect(() => {
+        if (initialQuery && messages.length === 0) {
+            setInput(initialQuery);
+        }
+    }, [initialQuery]);
 
     // Research Store state
     const {

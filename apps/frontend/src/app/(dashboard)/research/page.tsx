@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Page() {
-  return <ResearchChat />;
+interface ResearchPageProps {
+  searchParams: Promise<{ q?: string }>;
+}
+
+export default async function Page({ searchParams }: ResearchPageProps) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  return <ResearchChat initialQuery={resolvedParams?.q || ''} />;
 }
